@@ -13,8 +13,11 @@
 #include <string.h>
 #include <netdb.h>
 #include <time.h>
+#include <fcntl.h>
+#include <sys/file.h>
 
 #define BUFLEN 512
+#define NODEFILE	"nodelist"
 
 
 int curr_host;
@@ -34,11 +37,54 @@ void calculatehash(char *c, int len, char *h)
 {	MD5(c,len, h);
 }
 
+int get_file_length(int fd)
+{
+	int end = lseek(fd, 0, SEEK_END);
+	lseek(fd, 0, SEEK_SET);
+	return end;
+}
 
 void initialize_host(int portnum) 
 {
-	int fd;
-	fd = open("nodelist")	
+	int fd, filelen, count = 0;
+	char *filestr, *ptr, *tok;
+	char buf[100], md5[32];
+
+	fd = open(NODEFILE, O_RDWR | O_CREAT, 0777);
+	if (fd < 0) {
+		printf("Error opening file %s\n", NODEFILE);
+		exit(1);
+	}
+	flock(fd, LOCK_EX);
+
+	lseek(fd, 0, SEEK_END);
+	sprintf(buf, "localhost:%d\n", portnum);
+	write(fd, buf, strlen(buf));
+
+	filelen = get_file_length(fd);
+	filestr = malloc(filelen + 1);
+	read(fd, filestr, filelen);
+	filestr[filelen] = '\0';
+
+	tok = strtok(filestr, "\n");
+	while (tok != NULL) {
+		count++;
+		/* ptr = strstr(tok, ":");
+		while(*ptr != '\0') {
+			*ptr = *(ptr + 1);
+			ptr++;
+		}
+		printf(".%s.\n", tok);
+		*/
+		tok = strtok(NULL, "\n");
+	}
+
+	if (count == TOTAL_NODES) {
+		printf("I am %d and I will now start init\n", portnum);
+	}
+
+	flock(fd, LOCK_UN);
+	close(fd);
 }
 
 /*
