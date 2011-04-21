@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <netdb.h>
+#include <time.h>
 
 #define BUFLEN 512
 
@@ -33,6 +34,12 @@ void calculatehash(char *c, int len, char *h)
 {	MD5(c,len, h);
 }
 
+
+void initialize_host(int portnum) 
+{
+	int fd;
+	fd = open("nodelist")	
+}
 
 /*
  * forwards message m to port
@@ -79,6 +86,8 @@ void server_listen() {
 	char buf[BUFLEN];
 	int client;
 
+	srand(time(NULL));
+
 	if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		printf("error in socket creation");
 		exit(1);
@@ -88,10 +97,16 @@ void server_listen() {
 	sock_server.sin_family = AF_INET;
 	sock_server.sin_port = htons(portnum);
 	sock_server.sin_addr.s_addr = htonl(INADDR_ANY);
-	if (bind(s, (struct sockaddr *) &sock_server, sizeof(sock_server)) == -1) {
-		printf("error in binding socket");
-		exit(1);
+
+	/* Each server instance created should listen on a different port. Generate a random number between 1024 to 65535.
+ 	   Keep on generating new random numbers until bind succeeds.
+ 	 */
+	while (bind(s, (struct sockaddr *) &sock_server, sizeof(sock_server)) == -1) {
+		portnum = rand() % ( (65535-1024) + 1024);
+		sock_server.sin_port = htons(portnum);
 	}
+
+	initialize_host(portnum);
 
 	if (listen(s, 10) == -1) {
 		printf("listen error");

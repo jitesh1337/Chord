@@ -4,7 +4,6 @@ default: client
 
 client:
 	gcc -o client client.c 
-	
+
 clean:
-	rm dhtmain client
-	
+	rm -f dhtmain client *~
