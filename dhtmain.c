@@ -19,15 +19,30 @@
 #define BUFLEN 512
 #define NODEFILE	"nodelist"
 
+#define MAX_NODES	512
 
 int curr_host;
 int TOTAL_NODES;
 int portnum = 50000;
 
+struct node_entry {
+	int portnum;
+	char h[16];
+};
+
+struct node_entry node_list[MAX_NODES];
+
 void printhash(unsigned char h[16])
 {	 int i;
 	 for(i=0;i<16;i++)
 		 printf("%02x",h[i]);
+}
+
+void copyhash(unsigned char d[16], unsigned char s[16])
+{
+	int i;
+	for(i=0;i<16;i++)
+		d[i]=s[i];
 }
 
 /*
@@ -42,6 +57,48 @@ int get_file_length(int fd)
 	int end = lseek(fd, 0, SEEK_END);
 	lseek(fd, 0, SEEK_SET);
 	return end;
+}
+
+void init_node(int portnum, int fd)
+{
+	int count=0, filelen, port, i;
+	char *tok, *ptr, *filestr;
+	char h[16];
+
+	lseek(fd, 0, SEEK_SET);
+	filelen = get_file_length(fd);
+	filestr = malloc(filelen + 1);
+	read(fd, filestr, filelen);
+	filestr[filelen] = '\0';
+
+	tok = strtok(filestr, "\n");
+	while (tok != NULL) {
+		ptr = strstr(tok, ":");
+		port = atoi(ptr+1);
+
+		while(*ptr != '\0') {
+			*ptr = *(ptr + 1);
+			ptr++;
+		}
+
+		calculatehash(tok, strlen(tok), h);
+
+		//printf(".%s.%d.", tok, port);
+		//printhash(h);
+		printf("\n");
+
+		node_list[count].portnum = port;
+		copyhash(node_list[count].h, h);
+		count++;
+
+		tok = strtok(NULL, "\n");
+	}
+
+	for(i=0;i<TOTAL_NODES;i++) {
+		printf("Node %d)%d:",i,node_list[i].portnum);
+		printhash(node_list[i].h);
+		printf("\n");
+	}
 }
 
 void initialize_host(int portnum) 
@@ -81,6 +138,7 @@ void initialize_host(int portnum)
 
 	if (count == TOTAL_NODES) {
 		printf("I am %d and I will now start init\n", portnum);
+		init_node(portnum, fd);
 	}
 
 	flock(fd, LOCK_UN);
