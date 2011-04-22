@@ -26,11 +26,14 @@ int TOTAL_NODES;
 int portnum = 50000;
 int my_portnum, is_initiator = 0;
 
+int my_successor = 0;
+int my_predecessor = 0;
+
 void forward_message(int port, char *m);
 
 struct node_entry {
 	int portnum;
-	char h[16];
+	unsigned char h[16];
 };
 
 struct node_entry node_list[MAX_NODES];
@@ -60,6 +63,24 @@ int get_file_length(int fd)
 	int end = lseek(fd, 0, SEEK_END);
 	lseek(fd, 0, SEEK_SET);
 	return end;
+}
+
+void add(unsigned char h[16], int i, unsigned char r[16])
+{
+        unsigned char t[16];
+        int j, carry=0;
+
+        memset(t, 0, 16);
+
+        t[(15 - i/8)] = 1 << (i%8);
+
+        for ( j=15; j >=0 ; j--) {
+                r[j] = h[j] + t[j] + carry;
+                carry = 0;
+                if ( r[j] < h[j] || r[j] < t[j] ) {
+                        carry = 1;
+                }
+        }
 }
 
 void init_node(int portnum, int fd)
@@ -116,6 +137,26 @@ int find_next(int portnum)
 	return node_list[(i + 1) % TOTAL_NODES].portnum;
 }
 
+int find_prev(int portnum)
+{
+	int i;
+	for(i = 0; i < TOTAL_NODES; i++) {
+		if (node_list[i].portnum == portnum)
+			break;
+	}
+
+	return node_list[(i + TOTAL_NODES - 1) % TOTAL_NODES].portnum;
+}
+
+void create_finger_table(int my_portnum) 
+{
+	my_successor = find_next(my_portnum);
+	printf("My(%d) Successor: %d\n", my_portnum, my_successor);
+	my_predecessor = find_prev(my_portnum);
+	printf("My(%d) Predecessor: %d\n", my_portnum, my_predecessor);
+
+}
+
 void initialize_host(int portnum) 
 {
 	int fd, filelen, count = 0;
@@ -159,6 +200,7 @@ void initialize_host(int portnum)
 		next = find_next(portnum);
 		printf("%d: Next port: %d\n", my_portnum, next);
 		is_initiator = 1;
+		create_finger_table(portnum);
 		forward_message(next, "START");
 
 		int i;
@@ -278,7 +320,7 @@ void server_listen() {
 
 
 		} else if (strcmp(command, "START") == 0) {
-			printf("%d: STart command received\n", my_portnum);
+			printf("%d: Start command received\n", my_portnum);
 			if (is_initiator == 1)
 				break;
 			else {
@@ -288,6 +330,7 @@ void server_listen() {
 				qsort(node_list, TOTAL_NODES, sizeof(struct node_entry), compare_nodes);
 			}
 			next = find_next(my_portnum);
+			create_finger_table(my_portnum);
 			forward_message(next, "START");
 		}
 		close(client);
