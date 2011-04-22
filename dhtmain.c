@@ -24,6 +24,9 @@
 int curr_host;
 int TOTAL_NODES;
 int portnum = 50000;
+int my_portnum, is_initiator = 0;
+
+void forward_message(int port, char *m);
 
 struct node_entry {
 	int portnum;
@@ -75,6 +78,7 @@ void init_node(int portnum, int fd)
 	while (tok != NULL) {
 		/* Remove the ":" between hostname and port */
 		ptr = strstr(tok, ":");
+		port = atoi(ptr+1);
 		while(*ptr != '\0') {
 			*ptr = *(ptr + 1);
 			ptr++;
@@ -83,7 +87,6 @@ void init_node(int portnum, int fd)
 		/* Calculate hash */
 		calculatehash(tok, strlen(tok), h);
 
-		port = atoi(ptr+1);
 		node_list[count].portnum = port;
 		copyhash(node_list[count].h, h);
 		count++;
@@ -99,11 +102,6 @@ int compare_nodes(const void *n1, const void *n2)
 
 	n1_s = (struct node_entry *)n1;
 	n2_s = (struct node_entry *)n2;
-	printf("Comparing: ");
-	printhash(n1_s->h);
-	printf(", ");
-	printhash(n2_s->h);
-	printf("\n");
 	return memcmp(n1_s->h, n2_s->h, 16);
 }
 
@@ -115,7 +113,7 @@ int find_next(int portnum)
 			break;
 	}
 
-	return node_list[(i + i) % TOTAL_NODES].portnum;
+	return node_list[(i + 1) % TOTAL_NODES].portnum;
 }
 
 void initialize_host(int portnum) 
@@ -159,6 +157,9 @@ void initialize_host(int portnum)
 		init_node(portnum, fd);
 		qsort(node_list, TOTAL_NODES, sizeof(struct node_entry), compare_nodes);
 		next = find_next(portnum);
+		printf("%d: Next port: %d\n", my_portnum, next);
+		is_initiator = 1;
+		forward_message(next, "START");
 
 		int i;
 		for(i=0;i<TOTAL_NODES;i++) {
@@ -216,7 +217,7 @@ void server_listen() {
 	int s, slen = sizeof(sock_client);
 	char *command;
 	char buf[BUFLEN];
-	int client;
+	int client, next, fd;
 
 	srand(time(NULL));
 
@@ -237,6 +238,7 @@ void server_listen() {
 		portnum = rand() % ( (65535-1024) + 1024);
 		sock_server.sin_port = htons(portnum);
 	}
+	my_portnum = portnum;
 
 	initialize_host(portnum);
 
@@ -275,6 +277,18 @@ void server_listen() {
 
 
 
+		} else if (strcmp(command, "START") == 0) {
+			printf("%d: STart command received\n", my_portnum);
+			if (is_initiator == 1)
+				break;
+			else {
+				fd = open(NODEFILE, O_RDWR | O_CREAT, 0777);
+				init_node(portnum, fd);
+				close(fd);
+				qsort(node_list, TOTAL_NODES, sizeof(struct node_entry), compare_nodes);
+			}
+			next = find_next(my_portnum);
+			forward_message(next, "START");
 		}
 		close(client);
 	}
