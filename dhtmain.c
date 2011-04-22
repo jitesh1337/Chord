@@ -73,20 +73,17 @@ void init_node(int portnum, int fd)
 
 	tok = strtok(filestr, "\n");
 	while (tok != NULL) {
+		/* Remove the ":" between hostname and port */
 		ptr = strstr(tok, ":");
-		port = atoi(ptr+1);
-
 		while(*ptr != '\0') {
 			*ptr = *(ptr + 1);
 			ptr++;
 		}
 
+		/* Calculate hash */
 		calculatehash(tok, strlen(tok), h);
 
-		//printf(".%s.%d.", tok, port);
-		//printhash(h);
-		printf("\n");
-
+		port = atoi(ptr+1);
 		node_list[count].portnum = port;
 		copyhash(node_list[count].h, h);
 		count++;
@@ -94,11 +91,31 @@ void init_node(int portnum, int fd)
 		tok = strtok(NULL, "\n");
 	}
 
-	for(i=0;i<TOTAL_NODES;i++) {
-		printf("Node %d)%d:",i,node_list[i].portnum);
-		printhash(node_list[i].h);
-		printf("\n");
+}
+
+int compare_nodes(const void *n1, const void *n2)
+{
+	struct node_entry *n1_s, *n2_s;
+
+	n1_s = (struct node_entry *)n1;
+	n2_s = (struct node_entry *)n2;
+	printf("Comparing: ");
+	printhash(n1_s->h);
+	printf(", ");
+	printhash(n2_s->h);
+	printf("\n");
+	return memcmp(n1_s->h, n2_s->h, 16);
+}
+
+int find_next(int portnum)
+{
+	int i;
+	for(i = 0; i < TOTAL_NODES; i++) {
+		if (node_list[i].portnum == portnum)
+			break;
 	}
+
+	return node_list[(i + i) % TOTAL_NODES].portnum;
 }
 
 void initialize_host(int portnum) 
@@ -106,6 +123,7 @@ void initialize_host(int portnum)
 	int fd, filelen, count = 0;
 	char *filestr, *ptr, *tok;
 	char buf[100], md5[32];
+	int next;
 
 	fd = open(NODEFILE, O_RDWR | O_CREAT, 0777);
 	if (fd < 0) {
@@ -139,7 +157,17 @@ void initialize_host(int portnum)
 	if (count == TOTAL_NODES) {
 		printf("I am %d and I will now start init\n", portnum);
 		init_node(portnum, fd);
+		qsort(node_list, TOTAL_NODES, sizeof(struct node_entry), compare_nodes);
+		next = find_next(portnum);
+
+		int i;
+		for(i=0;i<TOTAL_NODES;i++) {
+			printf("Node %d)%d:",i,node_list[i].portnum);
+			printhash(node_list[i].h);
+			printf("\n");
+		}
 	}
+
 
 	flock(fd, LOCK_UN);
 	close(fd);
