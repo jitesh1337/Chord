@@ -35,8 +35,13 @@ struct node_entry {
 	int portnum;
 	unsigned char h[16];
 };
-
 struct node_entry node_list[MAX_NODES];
+
+#define	MAX_TUPLES 1000
+struct key_val {
+	char key[128];
+	char value[128];
+} key_vals[MAX_TUPLES];
 
 void printhash(unsigned char h[16])
 {	 int i;
@@ -154,7 +159,7 @@ void create_finger_table(int my_portnum)
 	printf("My(%d) Successor: %d\n", my_portnum, my_successor);
 	my_predecessor = find_prev(my_portnum);
 	printf("My(%d) Predecessor: %d\n", my_portnum, my_predecessor);
-
+	memset(key_vals, 0, sizeof(key_vals));
 }
 
 void initialize_host(int portnum) 
@@ -257,9 +262,9 @@ void forward_message(int port, char *m)
 void server_listen() {
 	struct sockaddr_in sock_server, sock_client;
 	int s, slen = sizeof(sock_client);
-	char *command;
+	char *command, *key, *value;
 	char buf[BUFLEN];
-	int client, next, fd;
+	int client, next, fd, i;
 
 	srand(time(NULL));
 
@@ -322,7 +327,7 @@ void server_listen() {
 		} else if (strcmp(command, "START") == 0) {
 			printf("%d: Start command received\n", my_portnum);
 			if (is_initiator == 1)
-				break;
+				goto close;
 			else {
 				fd = open(NODEFILE, O_RDWR | O_CREAT, 0777);
 				init_node(portnum, fd);
@@ -332,7 +337,28 @@ void server_listen() {
 			next = find_next(my_portnum);
 			create_finger_table(my_portnum);
 			forward_message(next, "START");
+		} else if (strcmp(command, "GET_CONFIDENCE") == 0) {
+			key = strtok(NULL, ":");
+			for(i = 0; i < MAX_TUPLES; i++) {
+				if (strlen(key) == 0)
+					goto close;
+				if (strcmp(key, key_vals[i].key) == 0) {
+					printf("found %s:%s\n", key, key_vals[i].value);
+					goto close;
+				}
+			}
+		} else if (strcmp(command, "PUT_CONFIDENCE") == 0) {
+			key = strtok(NULL, ":");
+			value = strtok(NULL, ":");
+			for(i = 0; i < MAX_TUPLES; i++) {
+				if (strlen(key_vals[i].key) == 0) {
+					strcpy(key_vals[i].key, key);
+					strcpy(key_vals[i].value, value);
+					goto close;
+				}
+			}
 		}
+close:
 		close(client);
 	}
 
