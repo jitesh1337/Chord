@@ -21,6 +21,7 @@
 #define NODEFILE	"nodelist"
 
 #define MAX_NODES	512
+#define DEBUG		0
 
 int curr_host;
 int TOTAL_NODES;
@@ -165,33 +166,68 @@ int find_prev(int portnum)
 	return node_list[(i + TOTAL_NODES - 1) % TOTAL_NODES].portnum;
 }
 
+int is_in_between(unsigned char prev[16], unsigned char next[16], unsigned char result[16])
+{
+	int ret1, ret2;
+
+	//if (compare_nodes(prev, next) <= 0) {
+	if (memcmp(prev, next, 16) <= 0) {
+		if (memcmp(prev, result, 16) <= 0 && memcmp(result, next, 16) < 0) {
+			#if DEBUG
+			printf ("%d %d ", memcmp(prev, result, 16), memcmp(result, next, 16));
+			#endif
+			return 1;
+		}
+	} else {
+		ret1 = memcmp(prev, result, 16);
+		ret2 = memcmp(result, next, 16);
+		if ((ret1 < 0  && ret2 > 0) || (ret1 > 0 && ret2 < 0))
+			return 1;
+	}
+
+	return 0;
+}
+
 void create_finger_table(int my_portnum) 
 {
 	int i, j;
 	unsigned char result[16];
 
 	my_successor = find_next(my_portnum);
-	printf("My(%d) Successor: %d\n", my_portnum, my_successor);
 	my_predecessor = find_prev(my_portnum);
+	#if DEBUG
+	printf("My(%d) Successor: %d\n", my_portnum, my_successor);
 	printf("My(%d) Predecessor: %d\n", my_portnum, my_predecessor);
+	#endif
 	memset(key_vals, 0, sizeof(key_vals));
 
 	for ( i=0 ; i<128 ; i++ ) {
 		add(myhash, i, result);
 		for  (j=0 ; j<TOTAL_NODES ; j++ ) {
-			if ( compare_nodes(node_list[j].h, result) > 0 ) {
-				copyhash(finger_table[i].h, node_list[j].h);
+			if ( is_in_between(node_list[j].h, node_list[(j+1)%TOTAL_NODES].h, result)) {
+				#if DEBUG	
+				printhash(node_list[j].h);
+				printf(" ");
+				printhash(result);
+				printf(" ");
+				printhash(node_list[(j+1)%TOTAL_NODES].h);
+				printf("  %d", is_in_between(node_list[j].h, node_list[(j+1)%TOTAL_NODES].h, result));
+				printf("\n");
+				#endif
+				copyhash(finger_table[i].h, node_list[(j+1)%TOTAL_NODES].h);
 				finger_table[i].portnum = node_list[j].portnum;
 				break;
 			}
 		}
 	}
 
+#if DEBUG
 	for ( i=0 ; i<128 ; i++ ) {
-		printf("Finger %d) %d",i, portnum);
+		printf("Finger %d) %d:",i, portnum);
 		printhash(finger_table[i].h);
 		printf("\n");
 	}
+#endif
 }
 
 void initialize_host(int portnum) 
