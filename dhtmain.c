@@ -182,7 +182,7 @@ void create_finger_table(int my_portnum)
 			if ( compare_nodes(node_list[j].h, result) > 0 ) {
 				copyhash(finger_table[i].h, node_list[j].h);
 				finger_table[i].portnum = node_list[j].portnum;
-				continue;
+				break;
 			}
 		}
 	}
