@@ -15,6 +15,7 @@
 #include <time.h>
 #include <fcntl.h>
 #include <sys/file.h>
+#include <math.h>
 
 #define BUFLEN 512
 #define NODEFILE	"nodelist"
@@ -36,6 +37,15 @@ struct node_entry {
 	unsigned char h[16];
 };
 struct node_entry node_list[MAX_NODES];
+
+unsigned char myhash[16];
+
+struct finger_t_entry {
+	unsigned char h[16];
+	int portnum;
+};
+
+struct finger_t_entry finger_table[128];
 
 #define	MAX_TUPLES 1000
 struct key_val {
@@ -115,6 +125,8 @@ void init_node(int portnum, int fd)
 
 		node_list[count].portnum = port;
 		copyhash(node_list[count].h, h);
+		if (portnum == port) 
+			copyhash(myhash, h);
 		count++;
 
 		tok = strtok(NULL, "\n");
@@ -155,11 +167,31 @@ int find_prev(int portnum)
 
 void create_finger_table(int my_portnum) 
 {
+	int i, j;
+	unsigned char result[16];
+
 	my_successor = find_next(my_portnum);
 	printf("My(%d) Successor: %d\n", my_portnum, my_successor);
 	my_predecessor = find_prev(my_portnum);
 	printf("My(%d) Predecessor: %d\n", my_portnum, my_predecessor);
 	memset(key_vals, 0, sizeof(key_vals));
+
+	for ( i=0 ; i<128 ; i++ ) {
+		add(myhash, i, result);
+		for  (j=0 ; j<TOTAL_NODES ; j++ ) {
+			if ( compare_nodes(node_list[j].h, result) > 0 ) {
+				copyhash(finger_table[i].h, node_list[j].h);
+				finger_table[i].portnum = node_list[j].portnum;
+				continue;
+			}
+		}
+	}
+
+	for ( i=0 ; i<128 ; i++ ) {
+		printf("Finger %d) %d",i, portnum);
+		printhash(finger_table[i].h);
+		printf("\n");
+	}
 }
 
 void initialize_host(int portnum) 
