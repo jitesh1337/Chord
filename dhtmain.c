@@ -350,6 +350,8 @@ int listen_on_well_known_port()
 	}
 
 	destport = atoi(command);
+	close(client);
+	close(s);
 
 	return(destport);
 }
@@ -359,7 +361,7 @@ int find_successor(unsigned char keyhash[16], char *key, int flag)
 	int i;
 	char msg[100], hashop[33];
 
-	if ( is_in_between(my_predecessor.h, myhash, keyhash) ) {
+	if (is_in_between(my_predecessor.h, myhash, keyhash)) {
 		return my_portnum;	
 	} else if ( is_in_between(myhash, my_successor.h, keyhash) ) {
 		return my_successor.portnum;
@@ -367,19 +369,13 @@ int find_successor(unsigned char keyhash[16], char *key, int flag)
 
 	for (i=0 ; i<128 ; i++) {
 		if (is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)) {
-			sprinthash(keyhash, hashop);
-			printhash(finger_table[i].h);
-			printf(" ");
-			printhash(finger_table[(i+1)%128].h);
-			printf(" ");
-			printhash(keyhash);
-			printf("\n");
 			sprintf(msg, "GET_FORWARD:%d:%s", well_known_port, key);
-			printf("Will forward message to: %d\n", finger_table[i].portnum);
 			forward_message(finger_table[i].portnum, msg);
-			if ( flag == 0 )
+			if (flag == 0)
+				/* No waiting */
 				return -1;
 			else
+				/* Wait for response and return the response */
 				return listen_on_well_known_port();
 		}
 	}
@@ -413,7 +409,7 @@ void sync_forward_message(int port, char *m)
 	sock_client.sin_addr = *(struct in_addr*)(hent ->h_addr_list[0]);
 
 	if (connect(sc, (struct sockaddr *) &sock_client, slen) == -1) {
-		printf("connect failed");
+		printf("connect failed: %d\n", port);
 		exit(1);
 	}
 
@@ -459,7 +455,7 @@ void forward_message(int port, char *m)
 		sock_client.sin_addr = *(struct in_addr*)(hent ->h_addr_list[0]);
 
 		if (connect(sc, (struct sockaddr *) &sock_client, slen) == -1) {
-			printf("connect failed");
+			printf("connect to %d failed", port);
 			exit(1);
 		}
 
@@ -542,13 +538,12 @@ void server_listen() {
 		else if (strcmp(command, "GET") == 0) {
 			key = strtok(NULL, ":");
 			calculatehash(key, strlen(key), keyhash);
-			/* printf("Keyhash :");
-			printhash(keyhash);
-			printf("\n"); */
 			
+			/* Find the successor. If the successor is self, search in self-list */
+			/* "1" means that find_successor waits till entire resolution is complete */
 			destport =  find_successor(keyhash, key, 1);
-			printf("Successor is: %d\n", destport);
 
+			/* Search in self-list */
 			if (destport == my_portnum) {
 				for(i = 0; i < MAX_TUPLES; i++) {
 					if (strlen(key) == 0)
@@ -559,28 +554,25 @@ void server_listen() {
 					}
 				}	
 			} else {
+				/* Forward the message */
 				sprinthash(keyhash, hashop);
 				sprintf(msg, "GET_CONFIDENCE:%s", key);
 				sync_forward_message(destport, msg);
-				printf("Got value: %s\n", msg);
 			}
 		}
 		else if (strcmp(command, "GET_FORWARD") == 0) {
 			tmpport = strtok(NULL, ":");
 			tmpportnum = atoi(tmpport);
-			printf("%d: GET port .%d.\n", my_portnum, tmpportnum);
+
 			key = strtok(NULL, ":");
 			calculatehash(key, strlen(key), keyhash);
-			/*for(i = 0; i < 16; i++) {
-				keyhash[i] = (tmp[2*i] - '0')*16 + (tmp[2*i+1] - '0');
-				//memcpy(keyhash, tmp, 16);
-			} */
 			printhash(keyhash);
 			printf("\n");
 			
 			destport = find_successor(keyhash, key, 0);
 
-			if ( destport == my_successor.portnum) {
+			/* If my successor is "the" man, send it portnum to the listening process */
+			if (destport == my_successor.portnum) {
 				sprintf(msg, "%d", my_successor.portnum);
 				forward_message(tmpportnum, msg);
 			}
