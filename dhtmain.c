@@ -378,6 +378,7 @@ void sync_forward_message(int port, char *m)
 	struct sockaddr_in sock_client;
 	struct hostent *hent;
 	int sc, i, slen = sizeof(sock_client);
+	char buf[BUFLEN];
 
 	if ((sc = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		printf("socket creation failed ");
@@ -406,6 +407,11 @@ void sync_forward_message(int port, char *m)
 		exit(1);
 	}
 
+        if (recv(sc, buf, BUFLEN, 0) == -1) {
+	        printf("recv error");
+        	exit(1);
+        }
+
 	close(sc);
 }
 /*
@@ -416,7 +422,6 @@ void forward_message(int port, char *m)
 		struct sockaddr_in sock_client;
 		struct hostent *hent;
 		int sc, i, slen = sizeof(sock_client);
-		char buf[BUFLEN];
 
 		if ((sc = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 			printf("socket creation failed ");
@@ -444,11 +449,6 @@ void forward_message(int port, char *m)
 			printf("send failed ");
 			exit(1);
 		}
-
-                if (recv(sc, buf, BUFLEN, 0) == -1) {
-                        printf("recv error");
-                        exit(1);
-                }
 	
 		close(sc);
 }
