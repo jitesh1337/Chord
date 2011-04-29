@@ -29,6 +29,7 @@ int portnum = 50000;
 int my_portnum, is_initiator = 0;
 
 void forward_message(int port, char *m);
+void read_nodelist_and_find_successor();
 
 struct node_entry {
 	int portnum;
@@ -361,9 +362,9 @@ int find_successor(unsigned char keyhash[16], char *key, int flag)
 	int i;
 	char msg[BUFLEN], hashop[33];
 
-	if (is_in_between(my_predecessor.h, myhash, keyhash)) {
+	if (my_predecessor.portnum != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
 		return my_portnum;	
-	} else if ( is_in_between(myhash, my_successor.h, keyhash) ) {
+	} else if (my_successor.portnum != 0 &&  is_in_between(myhash, my_successor.h, keyhash) ) {
 		return my_successor.portnum;
 	}
 
@@ -484,7 +485,7 @@ close:
 		close(sc);
 }
 
-void server_listen() {
+void server_listen(int is_join) {
 	struct sockaddr_in sock_server, sock_client;
 	int s, slen = sizeof(sock_client);
 	char *command, *key, *value, *tmpport, *tmp;
@@ -519,7 +520,10 @@ void server_listen() {
 	}
 	my_portnum = portnum;
 
-	initialize_host(portnum);
+	if (is_join == 0)
+		initialize_host(portnum);
+	else
+		read_nodelist_and_find_successor();
 
 	if (listen(s, 10) == -1) {
 		printf("listen error");
@@ -541,10 +545,12 @@ void server_listen() {
 			exit(1);
 		}
 
-		if (recv(client, buf, BUFLEN, 0) == -1) {
+		ret = recv(client, buf, BUFLEN, 0);
+		if (ret == -1) {
 			printf("recv error");
 			exit(1);
-		}
+		} else if (ret == 0)
+			goto close;
 		printf("%d: Received: %s\n", my_portnum, buf);
 
 		command = strtok(buf, ":");
@@ -707,18 +713,94 @@ close:
 	close(s);
 }
 
+void read_nodelist_and_find_successor() 
+{
+	int fd, filelen, successor;
+	char *filestr, *ptr, *tok;
+	char buf[100], md5[32], msg[BUFLEN];
+	int next, portnum;
+	struct sockaddr_in sock_client;
+	struct hostent *hent;
+	int sock, slen = sizeof(sock_client), ret;
+
+	fd = open(NODEFILE, O_RDONLY);
+	if (fd < 0) {
+		printf("Error opening file %s\n", NODEFILE);
+		exit(1);
+	}
+
+	lseek(fd, 0, SEEK_END);
+	sprintf(buf, "localhost:%d\n", portnum);
+	write(fd, buf, strlen(buf));
+
+	filelen = get_file_length(fd);
+	filestr = malloc(filelen + 1);
+	read(fd, filestr, filelen);
+	filestr[filelen] = '\0';
+
+	tok = strtok(filestr, "\n");
+	while (tok != NULL) {
+		ptr = tok;
+		while((*ptr) != ':')
+			ptr++;
+		ptr++;
+		portnum = atoi(ptr);
+		
+		sock = socket(AF_INET, SOCK_STREAM, 0);
+		hent = gethostbyname("localhost");
+		memset((char *) &sock_client, 0, sizeof(sock_client));
+
+		sock_client.sin_family = AF_INET;
+		sock_client.sin_port = htons(portnum);
+		sock_client.sin_addr = *(struct in_addr*)(hent->h_addr_list[0]);
+
+		ret = connect(sock, (struct sockaddr *) &sock_client, slen);
+		if (ret != -1) {
+			/* If success the port is alive */
+			close(sock);
+			break;
+		}
+		close(sock);
+		printf(".%d.%d\n", portnum, strlen(ptr));
+		tok = strtok(NULL, "\n");
+	}
+
+	close(fd);
+	if (tok == NULL) {
+		printf("No one is alive\n");
+		exit(1);
+	}
+	else {
+		sprintf(msg, "GET_FORWARD:%d:localhost%d", well_known_port, my_portnum);
+		printf("msg: %s\n",msg);
+		forward_message(portnum, msg);
+		successor = listen_on_well_known_port();
+		my_successor.portnum = successor;
+		sprintf(msg, "localhost%d", my_portnum);
+		calculatehash(msg, strlen(msg), my_successor.h);
+		printf("Successor is: %d\n", my_successor.portnum);
+	}
+}
+
 int main(int argc, char *argv[]) {
 
-	if (argc != 2) {
+	if (argc > 2) {
 		printf("wrong number of arguments");
 		return;
 	}
 
-	TOTAL_NODES = atoi(argv[1]);
+	if (argc == 2)
+		TOTAL_NODES = atoi(argv[1]);
 	//curr_host = atoi(argv[2]);
+	
+	my_predecessor.portnum = 0;
+	my_successor.portnum = 0;
 
 	//initialize_host();
-	server_listen();
+	if (argc == 2)
+		server_listen(0);
+	else if (argc == 1)
+		server_listen(1);
 
 	return 0;
 }
