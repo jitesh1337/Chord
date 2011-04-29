@@ -354,7 +354,7 @@ int listen_on_well_known_port()
 	return(destport);
 }
 
-int find_successor(unsigned char keyhash[16], int flag)
+int find_successor(unsigned char keyhash[16], char *key, int flag)
 {
 	int i;
 	char msg[100], hashop[33];
@@ -374,7 +374,7 @@ int find_successor(unsigned char keyhash[16], int flag)
 			printf(" ");
 			printhash(keyhash);
 			printf("\n");
-			sprintf(msg, "GET_FORWARD:%d:%s", well_known_port, hashop);
+			sprintf(msg, "GET_FORWARD:%d:%s", well_known_port, key);
 			printf("Will forward message to: %d\n", finger_table[i].portnum);
 			forward_message(finger_table[i].portnum, msg);
 			if ( flag == 0 )
@@ -541,13 +541,12 @@ void server_listen() {
 		}
 		else if (strcmp(command, "GET") == 0) {
 			key = strtok(NULL, ":");
-			key = "Jitesh";
 			calculatehash(key, strlen(key), keyhash);
-			printf("Keyhash :");
+			/* printf("Keyhash :");
 			printhash(keyhash);
-			printf("\n");
+			printf("\n"); */
 			
-			destport =  find_successor(keyhash, 1);
+			destport =  find_successor(keyhash, key, 1);
 			printf("Successor is: %d\n", destport);
 
 			if (destport == my_portnum) {
@@ -561,7 +560,7 @@ void server_listen() {
 				}	
 			} else {
 				sprinthash(keyhash, hashop);
-				sprintf(msg, "GET_CONFIDENCE:%s", hashop);
+				sprintf(msg, "GET_CONFIDENCE:%s", key);
 				sync_forward_message(destport, msg);
 				printf("Got value: %s\n", msg);
 			}
@@ -570,15 +569,16 @@ void server_listen() {
 			tmpport = strtok(NULL, ":");
 			tmpportnum = atoi(tmpport);
 			printf("%d: GET port .%d.\n", my_portnum, tmpportnum);
-			tmp = strtok(NULL, ":");
-			for(i = 0; i < 16; i++) {
+			key = strtok(NULL, ":");
+			calculatehash(key, strlen(key), keyhash);
+			/*for(i = 0; i < 16; i++) {
 				keyhash[i] = (tmp[2*i] - '0')*16 + (tmp[2*i+1] - '0');
 				//memcpy(keyhash, tmp, 16);
-			}
+			} */
 			printhash(keyhash);
 			printf("\n");
 			
-			destport = find_successor(keyhash, 0);
+			destport = find_successor(keyhash, key, 0);
 
 			if ( destport == my_successor.portnum) {
 				sprintf(msg, "%d", my_successor.portnum);
@@ -605,6 +605,7 @@ void server_listen() {
 			forward_message(next, "START");
 		} else if (strcmp(command, "GET_CONFIDENCE") == 0) {
 			key = strtok(NULL, ":");
+			printf("Search for: %s\n", key);
 			for(i = 0; i < MAX_TUPLES; i++) {
 				if (strlen(key) == 0)
 					goto close;
