@@ -359,7 +359,7 @@ int listen_on_well_known_port()
 int find_successor(unsigned char keyhash[16], char *key, int flag)
 {
 	int i;
-	char msg[100], hashop[33];
+	char msg[BUFLEN], hashop[33];
 
 	if (is_in_between(my_predecessor.h, myhash, keyhash)) {
 		return my_portnum;	
@@ -376,6 +376,7 @@ int find_successor(unsigned char keyhash[16], char *key, int flag)
 		printf(" %d\n", is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)); */
 		if (is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)) {
 			sprintf(msg, "GET_FORWARD:%d:%s", well_known_port, key);
+			printf("-->%s\n", msg);
 			forward_message(finger_table[i].portnum, msg);
 			if (flag == 0)
 				/* No waiting */
@@ -411,10 +412,12 @@ void sync_forward_message(int port, char *m, char *buf)
 
 	sock_client.sin_family = AF_INET;
 	sock_client.sin_port = htons(port);
-	sock_client.sin_addr = *(struct in_addr*)(hent ->h_addr_list[0]);
+	sock_client.sin_addr = *(struct in_addr*)(hent->h_addr_list[0]);
 
-	if (connect(sc, (struct sockaddr *) &sock_client, slen) == -1); {
-		printf("connect failed: %d\n", port);
+	ret = connect(sc, (struct sockaddr *) &sock_client, slen);
+	if (ret == -1) {
+		perror("Why: ");
+		printf("connect failed: %d, ret: %d\n", port, ret);
 		exit(1);
 	}
 
@@ -485,7 +488,7 @@ void server_listen() {
 	struct sockaddr_in sock_server, sock_client;
 	int s, slen = sizeof(sock_client);
 	char *command, *key, *value, *tmpport, *tmp;
-	char buf[BUFLEN], hashop[33], msg[100], clbuf[BUFLEN];
+	char buf[BUFLEN], msg[BUFLEN], clbuf[BUFLEN];
 	int client, next, fd, i, destport, tmpportnum;
 	int opt=1, ret;
 
@@ -542,7 +545,7 @@ void server_listen() {
 			printf("recv error");
 			exit(1);
 		}
-		buf[BUFLEN-1] = '\0';
+		printf("%d: Received: %s\n", my_portnum, buf);
 
 		command = strtok(buf, ":");
 		if (strcmp(command, "END") == 0) {
@@ -551,6 +554,7 @@ void server_listen() {
 
 		}
 		else if (strcmp(command, "GET") == 0) {
+			printf("GETTTTTTT\n");
 			key = strtok(NULL, ":");
 			calculatehash(key, strlen(key), keyhash);
 			printf("%s:", key);
@@ -575,7 +579,6 @@ void server_listen() {
 				}	
 			} else {
 				/* Forward the message */
-				sprinthash(keyhash, hashop);
 				sprintf(msg, "GET_CONFIDENCE:%s", key);
 				sync_forward_message(destport, msg, clbuf);
 				printf("Will send this to client: %s\n", clbuf);
@@ -625,9 +628,8 @@ void server_listen() {
 				}
 			} else {
 				/* Forward the message */
-				sprinthash(keyhash, hashop);
 				sprintf(msg, "PUT_CONFIDENCE:%s:%s", key, value);
-				forward_message(destport, msg);
+				forward_message(destport, msg); 
 			}
 
 		} else if (strcmp(command, "START") == 0) {
