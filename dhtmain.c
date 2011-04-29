@@ -241,13 +241,13 @@ void create_finger_table(int my_portnum)
 		}
 	}
 
-//#if DEBUG
+#if DEBUG
 	for ( i=0 ; i<128 ; i++ ) {
 		printf("Finger %d) %d:",i, finger_table[i].portnum);
 		printhash(finger_table[i].h);
 		printf("\n");
 	}
-//#endif
+#endif
 }
 
 void initialize_host(int portnum) 
@@ -635,9 +635,10 @@ void server_listen() {
 
 		} else if (strcmp(command, "START") == 0) {
 			printf("%d: Start command received\n", my_portnum);
-			if (is_initiator == 1)
+			if (is_initiator == 1) {
+				is_initiator = 0;
 				goto close;
-			else {
+			} else {
 				fd = open(NODEFILE, O_RDWR | O_CREAT, 0777);
 				init_node(portnum, fd);
 				close(fd);
@@ -686,6 +687,18 @@ void server_listen() {
 				printhash(my_predecessor.h);
 				printf("\n");
 			}
+		} else if (strcmp(command, "PRINT") == 0) {
+			key = strtok(NULL, ":");
+			if (key == NULL)
+				is_initiator = 1;
+			else if (is_initiator == 1) {
+				is_initiator = 0;
+				goto close;
+			}
+
+			printf("PRINT: %d\n", my_portnum);
+			sprintf(msg, "PRINT:%d", 0);
+			forward_message(my_successor.portnum, msg);
 		}
 close:
 		close(client);
