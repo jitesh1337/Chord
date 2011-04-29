@@ -28,9 +28,6 @@ int TOTAL_NODES;
 int portnum = 50000;
 int my_portnum, is_initiator = 0;
 
-int my_successor = 0;
-int my_predecessor = 0;
-
 void forward_message(int port, char *m);
 
 struct node_entry {
@@ -38,15 +35,14 @@ struct node_entry {
 	unsigned char h[16];
 };
 struct node_entry node_list[MAX_NODES];
+struct node_entry my_successor;
+struct node_entry my_predecessor; 
 
 unsigned char myhash[16];
 
-struct finger_t_entry {
-	unsigned char h[16];
-	int portnum;
-};
+struct node_entry finger_table[128];
 
-struct finger_t_entry finger_table[128];
+int well_known_port = 10000;
 
 #define	MAX_TUPLES 1000
 struct key_val {
@@ -60,6 +56,12 @@ void printhash(unsigned char h[16])
 		 printf("%02x",h[i]);
 }
 
+void sprinthash(unsigned char h[16], char op[17])
+{	 int i;
+	 for(i=0;i<16;i++)
+	 	sprintf(op[i], "%02x", h[i]);
+	 op[i] = '\0';
+}
 void copyhash(unsigned char d[16], unsigned char s[16])
 {
 	int i;
@@ -79,6 +81,17 @@ int get_file_length(int fd)
 	int end = lseek(fd, 0, SEEK_END);
 	lseek(fd, 0, SEEK_SET);
 	return end;
+}
+
+void get_hash(int portnum, unsigned char h[16]) 
+{
+	int i;
+	for (i=0 ; i<TOTAL_NODES ; i++) {
+		if ( node_list[i].portnum == portnum ) {
+			copyhash(h, node_list[i].h);
+			break;
+		}
+	}
 }
 
 void add(unsigned char h[16], int i, unsigned char r[16])
@@ -193,11 +206,18 @@ void create_finger_table(int my_portnum)
 	int i, j;
 	unsigned char result[16];
 
-	my_successor = find_next(my_portnum);
-	my_predecessor = find_prev(my_portnum);
+	my_successor.portnum = find_next(my_portnum);
+	get_hash(my_successor.portnum, my_successor.h);
+	my_predecessor.portnum = find_prev(my_portnum);
+	get_hash(my_predecessor.portnum, my_predecessor.h);
+
 	#if DEBUG
-	printf("My(%d) Successor: %d\n", my_portnum, my_successor);
-	printf("My(%d) Predecessor: %d\n", my_portnum, my_predecessor);
+	printf("My(%d) Successor: %d ", my_portnum, my_successor.portnum);
+	printhash(my_successor.h);
+	printf("\n");
+	printf("My(%d) Predecessor: %d\n", my_portnum, my_predecessor.portnum);
+	printhash(my_predecessor.h);
+	printf("\n");
 	#endif
 	memset(key_vals, 0, sizeof(key_vals));
 
@@ -289,6 +309,70 @@ void initialize_host(int portnum)
 	close(fd);
 }
 
+int listen_on_well_known_port()
+{
+	struct sockaddr_in sock_server, sock_client;
+	int s, slen = sizeof(sock_client);
+	char *command;
+	int client;
+	int destport;
+
+	if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+		printf("error in socket creation");
+		exit(1);
+	}
+
+	memset((char *) &sock_server, 0, sizeof(sock_server));
+	sock_server.sin_family = AF_INET;
+	sock_server.sin_port = htons(well_known_port);
+	sock_server.sin_addr.s_addr = htonl(INADDR_ANY);
+	if (bind(s, (struct sockaddr *) &sock_server, sizeof(sock_server)) == -1) {
+		printf("error in binding socket");
+		exit(1);
+	}
+
+	if (listen(s, 10) == -1) {
+		printf("listen error");
+		exit(1);
+	}
+
+	if ((client = accept(s, (struct sockaddr *) &sock_client, &slen)) == -1) {
+		printf("accept error");
+		exit(1);
+	}
+
+	if (recv(client, command, 10, 0) == -1) {
+		printf("recv error");
+		exit(1);
+	}
+
+	destport = atoi(command);
+
+	return(destport);
+}
+
+int find_successor(unsigned char keyhash[16], int flag)
+{
+	int i;
+	char msg[100], hashop[17];
+
+	if ( is_in_between(my_predecessor.h, myhash, keyhash) ) {
+		return my_portnum;	
+	}
+
+	for (i=0 ; i<128 ; i++) {
+		if (is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)) {
+			sprinthash(keyhash, hashop);
+			sprintf(msg, "GET_FORWARD:%d:%s", well_known_port, hashop);
+			forward_message(well_known_port, msg);
+			if ( flag == 0 )
+				return -1;
+			else
+				return listen_on_well_known_port();
+		}
+	}
+}
+
 /*
  * forwards message m to port
  */
@@ -330,9 +414,11 @@ void forward_message(int port, char *m)
 void server_listen() {
 	struct sockaddr_in sock_server, sock_client;
 	int s, slen = sizeof(sock_client);
-	char *command, *key, *value;
-	char buf[BUFLEN];
-	int client, next, fd, i;
+	char *command, *key, *value, *tmpport, *tmp;
+	char buf[BUFLEN], hashop[17], msg[100];
+	int client, next, fd, i, destport, tmpportnum;
+
+	unsigned char keyhash[16];
 
 	srand(time(NULL));
 
@@ -351,6 +437,8 @@ void server_listen() {
  	 */
 	while (bind(s, (struct sockaddr *) &sock_server, sizeof(sock_server)) == -1) {
 		portnum = rand() % ( (65535-1024) + 1024);
+		if (portnum == well_known_port)
+			continue;
 		sock_server.sin_port = htons(portnum);
 	}
 	my_portnum = portnum;
@@ -387,6 +475,40 @@ void server_listen() {
 
 				printf("END message received \n");
 
+		}
+		else if (strcmp(command, "GET") == 0) {
+			key = strtok(NULL, ":");
+			calculatehash(key, strlen(key), keyhash);
+			printf("Keyhash :");
+			printhash(keyhash);
+			printf("\n");
+			
+			destport =  find_successor(keyhash, 1);
+
+			if (destport == my_portnum) {
+				for(i = 0; i < MAX_TUPLES; i++) {
+					if (strlen(key) == 0)
+						goto close;
+					if (strcmp(key, key_vals[i].key) == 0) {
+						printf("found %s:%s\n", key, key_vals[i].value);
+						goto close;
+					}
+				}	
+			} else {
+				sprinthash(keyhash, hashop);
+				sprintf(msg, "GET_CONFIDENCE:%s", hashop);
+				forward_message(destport, msg);
+			}
+		}
+		else if (strcmp(command, "GET_FORWARD") == 0) {
+			tmpport = strtok(NULL, ":");
+			tmpportnum = atoi(tmpport);
+			tmp = strtok(NULL, ":");
+			memcpy(keyhash, tmp, 16);
+			
+			if ( (memcmp(myhash, keyhash, 16) == 0) || (memcmp(myhash, my_successor.h, 16) == 0)) {
+				//send my or succ's portnum over the well-known port
+			}
 		}
 		else if (strcmp(command, "PUT") == 0) {
 
