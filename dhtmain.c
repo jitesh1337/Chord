@@ -420,7 +420,7 @@ void server_listen() {
 
 	unsigned char keyhash[16];
 
-	srand(time(NULL));
+	//srand(time(NULL));
 
 	if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		printf("error in socket creation");
