@@ -670,6 +670,22 @@ void server_listen() {
 					goto close;
 				}
 			}
+		} else if (strcmp(command, "GET_PREDECESSOR") == 0) {
+			sprintf(msg, "%d", my_predecessor.portnum);
+			ret = send(client, msg, strlen(msg)+1, 0);	
+			if (ret < 0)
+				printf("Error sending predecessor info\n");
+		} else if (strcmp(command, "NOTIFY") == 0) {
+			key = strtok(NULL, ":");
+			sprintf(clbuf, "localhost%s", key);
+			calculatehash(clbuf, strlen(clbuf), keyhash);
+			if (is_in_between(my_predecessor.h, myhash, keyhash)) {
+				my_predecessor.portnum = atoi(key);
+				copyhash(my_predecessor.h, keyhash);
+				printf("%d: New predecessor set to %d:", my_portnum, my_predecessor.portnum);
+				printhash(my_predecessor.h);
+				printf("\n");
+			}
 		}
 close:
 		close(client);
