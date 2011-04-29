@@ -373,6 +373,41 @@ int find_successor(unsigned char keyhash[16], int flag)
 	}
 }
 
+void sync_forward_message(int port, char *m)
+{
+	struct sockaddr_in sock_client;
+	struct hostent *hent;
+	int sc, i, slen = sizeof(sock_client);
+
+	if ((sc = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+		printf("socket creation failed ");
+		exit(1);
+	}
+
+	hent = gethostbyname("localhost");
+	if(hent == NULL)
+	{	printf("gethostbyname failed ");
+		exit(1);
+	}
+
+	memset((char *) &sock_client, 0, sizeof(sock_client));
+
+	sock_client.sin_family = AF_INET;
+	sock_client.sin_port = htons(port);
+	sock_client.sin_addr = *(struct in_addr*)(hent ->h_addr_list[0]);
+
+	if (connect(sc, (struct sockaddr *) &sock_client, slen) == -1) {
+		printf("connect failed");
+		exit(1);
+	}
+
+	if (send(sc, m, BUFLEN, 0) == -1) {
+		printf("send failed ");
+		exit(1);
+	}
+
+	close(sc);
+}
 /*
  * forwards message m to port
  */
@@ -381,6 +416,7 @@ void forward_message(int port, char *m)
 		struct sockaddr_in sock_client;
 		struct hostent *hent;
 		int sc, i, slen = sizeof(sock_client);
+		char buf[BUFLEN];
 
 		if ((sc = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 			printf("socket creation failed ");
@@ -408,6 +444,12 @@ void forward_message(int port, char *m)
 			printf("send failed ");
 			exit(1);
 		}
+
+                if (recv(sc, buf, BUFLEN, 0) == -1) {
+                        printf("recv error");
+                        exit(1);
+                }
+	
 		close(sc);
 }
 
@@ -497,7 +539,7 @@ void server_listen() {
 			} else {
 				sprinthash(keyhash, hashop);
 				sprintf(msg, "GET_CONFIDENCE:%s", hashop);
-				forward_message(destport, msg);
+				sync_forward_message(destport, msg);
 			}
 		}
 		else if (strcmp(command, "GET_FORWARD") == 0) {
@@ -506,9 +548,13 @@ void server_listen() {
 			tmp = strtok(NULL, ":");
 			memcpy(keyhash, tmp, 16);
 			
-			if ( (memcmp(myhash, keyhash, 16) == 0) || (memcmp(myhash, my_successor.h, 16) == 0)) {
-				//send my or succ's portnum over the well-known port
+			destport = find_successor(keyhash, 0);
+
+			if ( destport == my_successor.portnum) {
+				sprintf(msg, "%d", my_successor.portnum);
+				forward_message(tmpportnum, msg);
 			}
+
 		}
 		else if (strcmp(command, "PUT") == 0) {
 
