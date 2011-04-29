@@ -56,11 +56,11 @@ void printhash(unsigned char h[16])
 		 printf("%02x",h[i]);
 }
 
-void sprinthash(unsigned char h[16], char op[17])
+void sprinthash(unsigned char h[16], char op[33])
 {	 int i;
 	 for(i=0;i<16;i++)
-	 	sprintf(op[i], "%02x", h[i]);
-	 op[i] = '\0';
+	 	sprintf(&op[2*i], "%02x", h[i]);
+	 op[32] = '\0';
 }
 void copyhash(unsigned char d[16], unsigned char s[16])
 {
@@ -235,19 +235,19 @@ void create_finger_table(int my_portnum)
 				printf("\n");
 				#endif
 				copyhash(finger_table[i].h, node_list[(j+1)%TOTAL_NODES].h);
-				finger_table[i].portnum = node_list[j].portnum;
+				finger_table[i].portnum = node_list[(j+1)%TOTAL_NODES].portnum;
 				break;
 			}
 		}
 	}
 
-#if DEBUG
+//#if DEBUG
 	for ( i=0 ; i<128 ; i++ ) {
-		printf("Finger %d) %d:",i, portnum);
+		printf("Finger %d) %d:",i, finger_table[i].portnum);
 		printhash(finger_table[i].h);
 		printf("\n");
 	}
-#endif
+//#endif
 }
 
 void initialize_host(int portnum) 
@@ -315,7 +315,7 @@ int listen_on_well_known_port()
 	int s, slen = sizeof(sock_client);
 	char *command;
 	int client;
-	int destport;
+	int destport, ret;
 
 	if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		printf("error in socket creation");
@@ -341,8 +341,8 @@ int listen_on_well_known_port()
 		exit(1);
 	}
 
-	if (recv(client, command, 10, 0) == -1) {
-		printf("recv error");
+	if ((ret = recv(client, command, 10, 0)) == -1) {
+		printf("recv error: %d\n", ret);
 		exit(1);
 	}
 
@@ -354,17 +354,26 @@ int listen_on_well_known_port()
 int find_successor(unsigned char keyhash[16], int flag)
 {
 	int i;
-	char msg[100], hashop[17];
+	char msg[100], hashop[33];
 
 	if ( is_in_between(my_predecessor.h, myhash, keyhash) ) {
 		return my_portnum;	
+	} else if ( is_in_between(myhash, my_successor.h, keyhash) ) {
+		return my_successor.portnum;
 	}
 
 	for (i=0 ; i<128 ; i++) {
 		if (is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)) {
 			sprinthash(keyhash, hashop);
+			printhash(finger_table[i].h);
+			printf(" ");
+			printhash(finger_table[(i+1)%128].h);
+			printf(" ");
+			printhash(keyhash);
+			printf("\n");
 			sprintf(msg, "GET_FORWARD:%d:%s", well_known_port, hashop);
-			forward_message(well_known_port, msg);
+			printf("Will forward message to: %d\n", finger_table[i].portnum);
+			forward_message(finger_table[i].portnum, msg);
 			if ( flag == 0 )
 				return -1;
 			else
@@ -457,7 +466,7 @@ void server_listen() {
 	struct sockaddr_in sock_server, sock_client;
 	int s, slen = sizeof(sock_client);
 	char *command, *key, *value, *tmpport, *tmp;
-	char buf[BUFLEN], hashop[17], msg[100];
+	char buf[BUFLEN], hashop[33], msg[100];
 	int client, next, fd, i, destport, tmpportnum;
 
 	unsigned char keyhash[16];
@@ -520,12 +529,14 @@ void server_listen() {
 		}
 		else if (strcmp(command, "GET") == 0) {
 			key = strtok(NULL, ":");
+			key = "Jitesh";
 			calculatehash(key, strlen(key), keyhash);
 			printf("Keyhash :");
 			printhash(keyhash);
 			printf("\n");
 			
 			destport =  find_successor(keyhash, 1);
+			printf("Successor is: %d\n", destport);
 
 			if (destport == my_portnum) {
 				for(i = 0; i < MAX_TUPLES; i++) {
@@ -540,13 +551,20 @@ void server_listen() {
 				sprinthash(keyhash, hashop);
 				sprintf(msg, "GET_CONFIDENCE:%s", hashop);
 				sync_forward_message(destport, msg);
+				printf("Got value: %s\n", msg);
 			}
 		}
 		else if (strcmp(command, "GET_FORWARD") == 0) {
 			tmpport = strtok(NULL, ":");
 			tmpportnum = atoi(tmpport);
+			printf("%d: GET port .%d.\n", my_portnum, tmpportnum);
 			tmp = strtok(NULL, ":");
-			memcpy(keyhash, tmp, 16);
+			for(i = 0; i < 16; i++) {
+				keyhash[i] = (tmp[2*i] - '0')*16 + (tmp[2*i+1] - '0');
+				//memcpy(keyhash, tmp, 16);
+			}
+			printhash(keyhash);
+			printf("\n");
 			
 			destport = find_successor(keyhash, 0);
 
