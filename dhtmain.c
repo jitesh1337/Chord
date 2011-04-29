@@ -494,7 +494,7 @@ void server_listen() {
 
 	unsigned char keyhash[16];
 
-	srand(time(NULL));
+	//srand(time(NULL));
 
 	if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		printf("error in socket creation");
@@ -574,6 +574,7 @@ void server_listen() {
 						goto close;
 					if (strcmp(key, key_vals[i].key) == 0) {
 						printf("found %s:%s\n", key, key_vals[i].value);
+						ret = send(client, key_vals[i].value, strlen(key_vals[i].value) + 1, 0);
 						goto close;
 					}
 				}	
@@ -582,7 +583,7 @@ void server_listen() {
 				sprintf(msg, "GET_CONFIDENCE:%s", key);
 				sync_forward_message(destport, msg, clbuf);
 				printf("Will send this to client: %s\n", clbuf);
-				ret = send(client, clbuf, strlen(clbuf), 0);
+				ret = send(client, clbuf, strlen(clbuf) + 1, 0);
 				printf("Get send bytes: %d\n", ret);
 			}
 		}
@@ -653,7 +654,7 @@ void server_listen() {
 					goto close;
 				if (strcmp(key, key_vals[i].key) == 0) {
 					printf("found %s:%s\n", key, key_vals[i].value); fflush(stdout);
-					ret = send(client, key_vals[i].value, strlen(key_vals[i].value), 0);
+					ret = send(client, key_vals[i].value, strlen(key_vals[i].value) + 1, 0);
 					printf("Get confidence send bytes: %d\n", ret);
 					goto close;
 				}
