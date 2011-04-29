@@ -65,6 +65,11 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 
+	if (strncmp(buf, "GET", 3) == 0) {
+		recv(s, buf, BUFLEN, 0);
+		printf("Answer: %s\n", buf);
+	}
+
 	close(s);
 	return 0;
 }

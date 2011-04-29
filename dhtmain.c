@@ -313,7 +313,7 @@ int listen_on_well_known_port()
 {
 	struct sockaddr_in sock_server, sock_client;
 	int s, slen = sizeof(sock_client);
-	char *command;
+	char command[10];
 	int client;
 	int destport, ret;
 	int opt=1;
@@ -368,6 +368,12 @@ int find_successor(unsigned char keyhash[16], char *key, int flag)
 	}
 
 	for (i=0 ; i<128 ; i++) {
+		/*printhash(finger_table[i].h);
+		printf(" ");
+		printhash(keyhash);
+		printf(" ");
+		printhash(finger_table[(i+1)%128].h);
+		printf(" %d\n", is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)); */
 		if (is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)) {
 			sprintf(msg, "GET_FORWARD:%d:%s", well_known_port, key);
 			forward_message(finger_table[i].portnum, msg);
@@ -381,13 +387,12 @@ int find_successor(unsigned char keyhash[16], char *key, int flag)
 	}
 }
 
-void sync_forward_message(int port, char *m)
+void sync_forward_message(int port, char *m, char *buf)
 {
 	struct sockaddr_in sock_client;
 	struct hostent *hent;
 	int sc, i, slen = sizeof(sock_client);
-	char buf[BUFLEN];
-	int opt=1;
+	int opt=1, ret;
 
 	if ((sc = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		printf("socket creation failed ");
@@ -400,7 +405,7 @@ void sync_forward_message(int port, char *m)
 		exit(1);
 	}
 
-	setsockopt(sc,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
+	//setsockopt(sc,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
 
 	memset((char *) &sock_client, 0, sizeof(sock_client));
 
@@ -408,7 +413,7 @@ void sync_forward_message(int port, char *m)
 	sock_client.sin_port = htons(port);
 	sock_client.sin_addr = *(struct in_addr*)(hent ->h_addr_list[0]);
 
-	if (connect(sc, (struct sockaddr *) &sock_client, slen) == -1) {
+	if (connect(sc, (struct sockaddr *) &sock_client, slen) == -1); {
 		printf("connect failed: %d\n", port);
 		exit(1);
 	}
@@ -418,10 +423,12 @@ void sync_forward_message(int port, char *m)
 		exit(1);
 	}
 
-        if (recv(sc, buf, BUFLEN, 0) == -1) {
+        if ((ret = recv(sc, buf, BUFLEN, 0)) == -1) {
 	        printf("recv error");
         	exit(1);
         }
+	
+	buf[ret] = '\0';
 
 	close(sc);
 }
@@ -433,14 +440,14 @@ void forward_message(int port, char *m)
 		struct sockaddr_in sock_client;
 		struct hostent *hent;
 		int sc, i, slen = sizeof(sock_client);
-		int opt=1;
+		int opt=1, retry = 10;
 
 		if ((sc = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 			printf("socket creation failed ");
 			exit(1);
 		}
 
-		setsockopt(sc,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
+		//setsockopt(sc,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
 
 		hent = gethostbyname("localhost");
 		if(hent == NULL)
@@ -454,16 +461,23 @@ void forward_message(int port, char *m)
 		sock_client.sin_port = htons(port);
 		sock_client.sin_addr = *(struct in_addr*)(hent ->h_addr_list[0]);
 
-		if (connect(sc, (struct sockaddr *) &sock_client, slen) == -1) {
-			printf("connect to %d failed", port);
-			exit(1);
-		}
+		while (connect(sc, (struct sockaddr *) &sock_client, slen) == -1 && retry > 0);
+		/*	retry--;
+		if (retry < 0) {
+			printf("connect to %d failed %s\n", port, m);
+			goto close;
+		} */
+		/* {
+			printf("connect to %d failed %s\n", port, m);
+			goto close;
+		} */
 
 		if (send(sc, m, BUFLEN, 0) == -1) {
 			printf("send failed ");
 			exit(1);
 		}
 	
+close:
 		close(sc);
 }
 
@@ -471,13 +485,13 @@ void server_listen() {
 	struct sockaddr_in sock_server, sock_client;
 	int s, slen = sizeof(sock_client);
 	char *command, *key, *value, *tmpport, *tmp;
-	char buf[BUFLEN], hashop[33], msg[100];
+	char buf[BUFLEN], hashop[33], msg[100], clbuf[BUFLEN];
 	int client, next, fd, i, destport, tmpportnum;
-	int opt=1;
+	int opt=1, ret;
 
 	unsigned char keyhash[16];
 
-	//srand(time(NULL));
+	srand(time(NULL));
 
 	if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		printf("error in socket creation");
@@ -528,6 +542,7 @@ void server_listen() {
 			printf("recv error");
 			exit(1);
 		}
+		buf[BUFLEN-1] = '\0';
 
 		command = strtok(buf, ":");
 		if (strcmp(command, "END") == 0) {
@@ -538,10 +553,15 @@ void server_listen() {
 		else if (strcmp(command, "GET") == 0) {
 			key = strtok(NULL, ":");
 			calculatehash(key, strlen(key), keyhash);
+			printf("%s:", key);
+			printhash(keyhash);
+			printf("\n");
 			
 			/* Find the successor. If the successor is self, search in self-list */
 			/* "1" means that find_successor waits till entire resolution is complete */
 			destport =  find_successor(keyhash, key, 1);
+			printf("Found desination: %d\n", destport);
+			//goto close;
 
 			/* Search in self-list */
 			if (destport == my_portnum) {
@@ -557,12 +577,16 @@ void server_listen() {
 				/* Forward the message */
 				sprinthash(keyhash, hashop);
 				sprintf(msg, "GET_CONFIDENCE:%s", key);
-				sync_forward_message(destport, msg);
+				sync_forward_message(destport, msg, clbuf);
+				printf("Will send this to client: %s\n", clbuf);
+				ret = send(client, clbuf, strlen(clbuf), 0);
+				printf("Get send bytes: %d\n", ret);
 			}
 		}
 		else if (strcmp(command, "GET_FORWARD") == 0) {
 			tmpport = strtok(NULL, ":");
 			tmpportnum = atoi(tmpport);
+			printf("Port in GET_FORWARD: %d\n", tmpportnum);
 
 			key = strtok(NULL, ":");
 			calculatehash(key, strlen(key), keyhash);
@@ -579,8 +603,32 @@ void server_listen() {
 
 		}
 		else if (strcmp(command, "PUT") == 0) {
+			key = strtok(NULL, ":");
+			calculatehash(key, strlen(key), keyhash);
+			value = strtok(NULL, ":");
+			printf("%s:%s:", key, value);
+			printhash(keyhash);
+			printf("\n");
 
+			destport =  find_successor(keyhash, key, 1);
+			printf("Found desination: %d\n", destport);
+			//goto close;
 
+			/* Search in self-list */
+			if (destport == my_portnum) {
+				for(i = 0; i < MAX_TUPLES; i++) {
+					if (strlen(key_vals[i].key) == 0) {
+						strcpy(key_vals[i].key, key);
+						strcpy(key_vals[i].value, value);
+						goto close;
+					}
+				}
+			} else {
+				/* Forward the message */
+				sprinthash(keyhash, hashop);
+				sprintf(msg, "PUT_CONFIDENCE:%s:%s", key, value);
+				forward_message(destport, msg);
+			}
 
 		} else if (strcmp(command, "START") == 0) {
 			printf("%d: Start command received\n", my_portnum);
@@ -602,13 +650,16 @@ void server_listen() {
 				if (strlen(key) == 0)
 					goto close;
 				if (strcmp(key, key_vals[i].key) == 0) {
-					printf("found %s:%s\n", key, key_vals[i].value);
+					printf("found %s:%s\n", key, key_vals[i].value); fflush(stdout);
+					ret = send(client, key_vals[i].value, strlen(key_vals[i].value), 0);
+					printf("Get confidence send bytes: %d\n", ret);
 					goto close;
 				}
 			}
 		} else if (strcmp(command, "PUT_CONFIDENCE") == 0) {
 			key = strtok(NULL, ":");
 			value = strtok(NULL, ":");
+			printf("%d: Putting - %s:%s\n", my_portnum, key, value);
 			for(i = 0; i < MAX_TUPLES; i++) {
 				if (strlen(key_vals[i].key) == 0) {
 					strcpy(key_vals[i].key, key);
