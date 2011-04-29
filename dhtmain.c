@@ -316,11 +316,14 @@ int listen_on_well_known_port()
 	char *command;
 	int client;
 	int destport;
+	int opt=1;
 
 	if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		printf("error in socket creation");
 		exit(1);
 	}
+
+	setsockopt(s,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
 
 	memset((char *) &sock_server, 0, sizeof(sock_server));
 	sock_server.sin_family = AF_INET;
@@ -379,6 +382,7 @@ void sync_forward_message(int port, char *m)
 	struct hostent *hent;
 	int sc, i, slen = sizeof(sock_client);
 	char buf[BUFLEN];
+	int opt=1;
 
 	if ((sc = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		printf("socket creation failed ");
@@ -390,6 +394,8 @@ void sync_forward_message(int port, char *m)
 	{	printf("gethostbyname failed ");
 		exit(1);
 	}
+
+	setsockopt(sc,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
 
 	memset((char *) &sock_client, 0, sizeof(sock_client));
 
@@ -422,11 +428,14 @@ void forward_message(int port, char *m)
 		struct sockaddr_in sock_client;
 		struct hostent *hent;
 		int sc, i, slen = sizeof(sock_client);
+		int opt=1;
 
 		if ((sc = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 			printf("socket creation failed ");
 			exit(1);
 		}
+
+		setsockopt(sc,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
 
 		hent = gethostbyname("localhost");
 		if(hent == NULL)
@@ -459,6 +468,7 @@ void server_listen() {
 	char *command, *key, *value, *tmpport, *tmp;
 	char buf[BUFLEN], hashop[17], msg[100];
 	int client, next, fd, i, destport, tmpportnum;
+	int opt=1;
 
 	unsigned char keyhash[16];
 
@@ -468,6 +478,8 @@ void server_listen() {
 		printf("error in socket creation");
 		exit(1);
 	}
+
+	setsockopt(s,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
 
 	memset((char *) &sock_server, 0, sizeof(sock_server));
 	sock_server.sin_family = AF_INET;
