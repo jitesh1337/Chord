@@ -18,6 +18,8 @@ echo "Expecting: Sinha"
 ./client 50000 "PUT:a:b"
 ./client 50000 "PUT:b:c"
 ./client 50000 "PUT:y:z"
+./client 50000 "PUT:Onkar:Dombe"
+./client 50000 "GET:Onkar"
 
 echo "Expecting: b"
 ./client 50000 "GET:a"

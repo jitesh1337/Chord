@@ -37,7 +37,7 @@ struct node_entry {
 	unsigned char h[16];
 };
 struct node_entry node_list[MAX_NODES];
-struct node_entry my_successor;
+struct node_entry my_successor, my_successor_of_successor;
 struct node_entry my_predecessor; 
 
 unsigned char myhash[16];
@@ -589,7 +589,8 @@ close:
 void * stabilise(void *arg)
 {
 	char msg[10], buf[20];
-	unsigned char hash[16], result[16];
+	char succ_msg[10], succ_buf[20];
+	unsigned char hash[16], succ_hash[16], result[16];
 	int i, successor;
 
 	while(1) {
@@ -598,6 +599,12 @@ void * stabilise(void *arg)
 		//printf("%d: My predecessor is: %s\n", my_portnum, msg);
 		sprintf(buf, "localhost%s", msg);
 		calculatehash(buf, strlen(buf), hash);
+
+		sync_forward_message(my_successor.portnum, "GET_SUCCESSOR", succ_msg);
+		sprintf(succ_buf, "localhost%s", succ_msg);
+		calculatehash(succ_buf, strlen(succ_buf), succ_hash);
+		my_successor_of_successor.portnum = atoi(succ_msg);
+		memcpy(my_successor_of_successor.h, succ_hash, 16);
 		//printf("--> .%s. %d\n", buf);
 		//printhash(myhash);
 		//printf(" ");
@@ -869,6 +876,11 @@ create_pthread:
 			ret = send(client, msg, strlen(msg)+1, 0);	
 			if (ret < 0)
 				printf("Error sending predecessor info\n");
+		} else if (strcmp(command, "GET_SUCCESSOR") == 0) {
+			sprintf(msg, "%d", my_successor.portnum);
+			ret = send(client, msg, strlen(msg)+1, 0);	
+			if (ret < 0)
+				printf("Error sending successor info\n");
 		} else if (strcmp(command, "NOTIFY") == 0) {
 			key = strtok(NULL, ":");
 			sprintf(clbuf, "localhost%s", key);
@@ -900,7 +912,7 @@ create_pthread:
 				goto close;
 			}
 
-			printf("PRINT: %d\n", my_portnum);
+			printf("PRINT: %d %d %d\n", my_portnum, my_successor.portnum, my_successor_of_successor.portnum);
 			sprintf(msg, "PRINT:%d", 0);
 			forward_message(my_successor.portnum, msg);
 		}
@@ -988,6 +1000,13 @@ void read_nodelist_and_find_successor()
 		my_successor.portnum = successor;
 		sprintf(msg, "localhost%d", successor);
 		calculatehash(msg, strlen(msg), my_successor.h);
+
+		sprintf(msg, "GET_SUCCESSOR");
+		sync_forward_message(my_successor.portnum, msg, buf);
+		my_successor_of_successor.portnum = atoi(buf);
+		sprintf(msg, "localhost%d", my_successor_of_successor.portnum);
+		calculatehash(msg, strlen(msg), my_successor_of_successor.h);
+
 		printf("Successor is: %d ", my_successor.portnum);
 		printhash(my_successor.h);
 		printf("\n");
