@@ -907,6 +907,10 @@ void read_nodelist_and_find_successor()
 		printf("msg: %s\n",msg);
 		forward_message(portnum, msg);
 		successor = listen_on_well_known_port();
+		if (successor == -2) {
+			printf("Successor not found. Try again later\n");
+			exit(1);
+		}
 		my_successor.portnum = successor;
 		sprintf(msg, "localhost%d", my_portnum);
 		calculatehash(msg, strlen(msg), my_successor.h);
