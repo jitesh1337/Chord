@@ -55,6 +55,14 @@ struct key_val {
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
+unsigned char num(char a)
+{
+	if (a >= '0' && a <= '9')
+		return a - '0';
+	else
+		return a - 'a' + 10;
+}
+
 void printhash(unsigned char h[16])
 {	 int i;
 	 for(i=0;i<16;i++)
@@ -397,7 +405,7 @@ int listen_on_well_known_port()
 	return(destport);
 }
 
-int find_successor(unsigned char keyhash[16], char *key, int flag, int wk_portnum)
+int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 {
 	int i;
 	char msg[BUFLEN], hashop[33];
@@ -432,7 +440,8 @@ int find_successor(unsigned char keyhash[16], char *key, int flag, int wk_portnu
 		else
 			hash = finger_table[i+1].h;
 		if (is_in_between(finger_table[i].h, hash, keyhash)) {
-			sprintf(msg, "GET_FORWARD:%d:%s", wk_portnum, key);
+			sprinthash(keyhash, hashop);
+			sprintf(msg, "GET_FORWARD:%d:%s", wk_portnum, hashop);
 			printf("%d: -->%s, will forward to: %d\n", my_portnum, msg, finger_table[i].portnum);
 			forward_message(finger_table[i].portnum, msg);
 			if (flag == 0)
@@ -667,7 +676,7 @@ void server_listen(int is_join) {
 			
 			/* Find the successor. If the successor is self, search in self-list */
 			/* "1" means that find_successor waits till entire resolution is complete */
-			destport =  find_successor(keyhash, key, 1, well_known_port);
+			destport =  find_successor(keyhash, 1, well_known_port);
 			printf("Found desination: %d\n", destport);
 			//goto close;
 
@@ -702,11 +711,14 @@ void server_listen(int is_join) {
 			printf("Port in GET_FORWARD: %d\n", tmpportnum);
 
 			key = strtok(NULL, ":");
-			calculatehash(key, strlen(key), keyhash);
+			for(i = 0; i < 16; i++) {
+				keyhash[i] = num(key[2*i]) * 16 + num(key[2*i+1]);
+			}
+			//calculatehash(key, strlen(key), keyhash);
 			printhash(keyhash);
 			printf("\n");
 		
-			destport = find_successor(keyhash, key, 0, tmpportnum);
+			destport = find_successor(keyhash, 0, tmpportnum);
 
 			if (destport == -2) {
 				sprintf(msg, "%d", -2);
@@ -733,7 +745,7 @@ void server_listen(int is_join) {
 			printhash(keyhash);
 			printf("\n");
 
-			destport =  find_successor(keyhash, key, 1, well_known_port);
+			destport =  find_successor(keyhash, 1, well_known_port);
 			printf("Found desination: %d\n", destport);
 			//goto close;
 			if (destport == -2) {
@@ -783,8 +795,9 @@ create_pthread:
 			key = strtok(NULL, ":");
 			printf("Search for: %s\n", key);
 			for(i = 0; i < MAX_TUPLES; i++) {
-				if (strlen(key) == 0)
+				if (strlen(key_vals[i].key) == 0)
 					goto close;
+
 				if (strcmp(key, key_vals[i].key) == 0) {
 					printf("found %s:%s\n", key, key_vals[i].value); fflush(stdout);
 					ret = send(client, key_vals[i].value, strlen(key_vals[i].value) + 1, 0);
@@ -845,11 +858,12 @@ void read_nodelist_and_find_successor()
 {
 	int fd, filelen, successor;
 	char *filestr, *ptr, *tok;
-	char buf[100], md5[32], msg[BUFLEN];
+	char buf[100], md5[32], msg[BUFLEN], hashop[33];
 	int next, portnum;
 	struct sockaddr_in sock_client;
 	struct hostent *hent;
 	int sock, slen = sizeof(sock_client), ret;
+	unsigned char hash[16];
 
 	sprintf(buf, "localhost%d", my_portnum);
 	calculatehash(buf, strlen(buf), myhash);
@@ -903,7 +917,10 @@ void read_nodelist_and_find_successor()
 		exit(1);
 	}
 	else {
-		sprintf(msg, "GET_FORWARD:%d:localhost%d", well_known_port, my_portnum);
+		sprintf(msg, "localhost%d", my_portnum);
+		calculatehash(msg, strlen(msg), hash);
+		sprinthash(hash, hashop);
+		sprintf(msg, "GET_FORWARD:%d:%s", well_known_port, hashop);
 		printf("msg: %s\n",msg);
 		forward_message(portnum, msg);
 		successor = listen_on_well_known_port();
