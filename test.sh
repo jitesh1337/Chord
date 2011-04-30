@@ -1,29 +1,31 @@
 #!/bin/bash
 
-./client 50000 "PUT:Jitesh:Shah"
-./client 50000 "PUT:Jitesh1:Shah1"
+PORT=28835
+
+./client $PORT "PUT:Jitesh:Shah"
+./client $PORT "PUT:Jitesh1:Shah1"
 echo "Expecting: Shah"
-./client 50000 "GET:Jitesh"
+./client $PORT "GET:Jitesh"
 
-./client 50000 "PUT:Salil:Kanitkar"
-./client 50000 "PUT:Salil1:Kanitkar1"
+./client $PORT "PUT:Salil:Kanitkar"
+./client $PORT "PUT:Salil1:Kanitkar1"
 echo "Expecting: Kanitkar1"
-./client 50000 "GET:Salil1"
+./client $PORT "GET:Salil1"
 
-./client 50000 "PUT:Mukul:Sinha"
-./client 50000 "PUT:Mukul1:Sinha1"
+./client $PORT "PUT:Mukul:Sinha"
+./client $PORT "PUT:Mukul1:Sinha1"
 echo "Expecting: Sinha"
-./client 50000 "GET:Mukul"
+./client $PORT "GET:Mukul"
 
-./client 50000 "PUT:a:b"
-./client 50000 "PUT:b:c"
-./client 50000 "PUT:y:z"
-./client 50000 "PUT:Onkar:Dombe"
-./client 50000 "GET:Onkar"
+./client $PORT "PUT:a:b"
+./client $PORT "PUT:b:c"
+./client $PORT "PUT:y:z"
+./client $PORT "PUT:Onkar:Dombe"
+./client $PORT "GET:Onkar"
 
 echo "Expecting: b"
-./client 50000 "GET:a"
+./client $PORT "GET:a"
 
 echo "Expecting: z"
-./client 50000 "GET:y"
+./client $PORT "GET:y"
 

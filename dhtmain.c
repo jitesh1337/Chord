@@ -29,7 +29,7 @@ int TOTAL_NODES;
 int portnum = 50000;
 int my_portnum, is_initiator = 0;
 
-void forward_message(int port, char *m);
+int forward_message(int port, char *m);
 void read_nodelist_and_find_successor();
 
 struct node_entry {
@@ -136,7 +136,7 @@ void generate_well_known_port()
 		exit(1);
 	}
 
-	setsockopt(well_known_socket, SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
+	//setsockopt(well_known_socket, SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
 
 	memset((char *) &sock_server, 0, sizeof(sock_server));
 	sock_server.sin_family = AF_INET;
@@ -407,7 +407,7 @@ int listen_on_well_known_port()
 
 int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 {
-	int i;
+	int i, ret;
 	char msg[BUFLEN], hashop[33], buf[BUFLEN];
 	int resport, retflag=0;
 	unsigned char *hash;
@@ -441,7 +441,10 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 			//printf("%d: Errrroooorrrrrrr: Zero entry found\n", my_portnum);
 			sprintf(msg, "GET_FORWARD:%d:%s", wk_portnum, hashop);
 			//printf("%d: -->%s, will forward to: %d, %d\n", my_portnum, msg, my_successor.portnum, flag);
-			forward_message(my_successor.portnum, msg);
+			ret = forward_message(my_successor.portnum, msg);
+			if (ret == -1)
+				return -2;
+
 			if (flag == 0)
 				/* No waiting */
 				return -1;
@@ -457,7 +460,10 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 			sprinthash(keyhash, hashop);
 			sprintf(msg, "GET_FORWARD:%d:%s", wk_portnum, hashop);
 			//printf("%d: -->%s, will forward to: %d, %d\n", my_portnum, msg, finger_table[i].portnum, flag);
-			forward_message(finger_table[i].portnum, msg);
+			ret = forward_message(finger_table[i].portnum, msg);
+			if (ret == -1)
+				return -2;
+
 			if (flag == 0)
 				/* No waiting */
 				return -1;
@@ -490,12 +496,15 @@ void insert(char key[BUFLEN], char value[BUFLEN])
 	}
 }
 
-void sync_forward_message(int port, char *m, char *buf)
+int sync_forward_message(int port, char *m, char *buf)
 {
 	struct sockaddr_in sock_client;
 	struct hostent *hent;
 	int sc, i, slen = sizeof(sock_client);
 	int opt=1, ret;
+
+	if (port == 0)
+		return -1;
 
 	if ((sc = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		printf("socket creation failed ");
@@ -520,7 +529,9 @@ void sync_forward_message(int port, char *m, char *buf)
 	if (ret == -1) {
 		perror("Why: ");
 		printf("connect failed: %d, ret: %d\n", port, ret);
-		exit(1);
+		close(sc);
+		//exit(1);
+		return -1;
 	}
 
 	if (send(sc, m, BUFLEN, 0) == -1) {
@@ -536,16 +547,17 @@ void sync_forward_message(int port, char *m, char *buf)
 	buf[ret] = '\0';
 
 	close(sc);
+	return 0;
 }
 /*
  * forwards message m to port
  */
-void forward_message(int port, char *m)
+int forward_message(int port, char *m)
 {
 		struct sockaddr_in sock_client;
 		struct hostent *hent;
 		int sc, i, slen = sizeof(sock_client);
-		int opt=1, retry = 10;
+		int opt=1, retry = 10, ret;
 
 		if ((sc = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 			printf("socket creation failed ");
@@ -566,7 +578,12 @@ void forward_message(int port, char *m)
 		sock_client.sin_port = htons(port);
 		sock_client.sin_addr = *(struct in_addr*)(hent ->h_addr_list[0]);
 
-		while (connect(sc, (struct sockaddr *) &sock_client, slen) == -1 && retry > 0);
+		ret = connect(sc, (struct sockaddr *) &sock_client, slen);
+		if (ret == -1) {
+			printf("%d: connect to %d failed\n", my_portnum, port);
+			close(sc);
+			return -1;
+		}
 		/*	retry--;
 		if (retry < 0) {
 			printf("connect to %d failed %s\n", port, m);
@@ -584,6 +601,33 @@ void forward_message(int port, char *m)
 	
 close:
 		close(sc);
+		return 0;
+}
+int test_connect(int port)
+{
+	struct sockaddr_in sock_client;
+	struct hostent *hent;
+	int sock, slen = sizeof(sock_client), ret;
+
+	if (port == 0)
+		return 0;
+
+	sock = socket(AF_INET, SOCK_STREAM, 0);
+	hent = gethostbyname("localhost");
+	memset((char *) &sock_client, 0, sizeof(sock_client));
+
+	sock_client.sin_family = AF_INET;
+	sock_client.sin_port = htons(port);
+	sock_client.sin_addr = *(struct in_addr*)(hent->h_addr_list[0]);
+
+	ret = connect(sock, (struct sockaddr *) &sock_client, slen);
+	if (ret == -1) {
+		/* If success the port is alive */
+		close(sock);
+		return -1;
+	}
+	close(sock);
+	return 0;
 }
 
 void * stabilise(void *arg)
@@ -591,20 +635,34 @@ void * stabilise(void *arg)
 	char msg[10], buf[20];
 	char succ_msg[10], succ_buf[20];
 	unsigned char hash[16], succ_hash[16], result[16];
-	int i, successor;
+	int i, successor, ret;
 
 	while(1) {
 		//printf("In pthread\n");
-		sync_forward_message(my_successor.portnum, "GET_PREDECESSOR", msg);
+		ret = sync_forward_message(my_successor.portnum, "GET_PREDECESSOR", msg);
+		if (ret == -1) {
+			my_successor.portnum = my_successor_of_successor.portnum;
+			copyhash(my_successor.h, my_successor_of_successor.h);
+			ret = sync_forward_message(my_successor.portnum, "GET_PREDECESSOR", msg);
+			if (ret == -1) {
+				printf("ERror detected in forwarding msg 1\n");
+				exit(1);
+			}
+		}
 		//printf("%d: My predecessor is: %s\n", my_portnum, msg);
 		sprintf(buf, "localhost%s", msg);
 		calculatehash(buf, strlen(buf), hash);
 
-		sync_forward_message(my_successor.portnum, "GET_SUCCESSOR", succ_msg);
-		sprintf(succ_buf, "localhost%s", succ_msg);
-		calculatehash(succ_buf, strlen(succ_buf), succ_hash);
-		my_successor_of_successor.portnum = atoi(succ_msg);
-		memcpy(my_successor_of_successor.h, succ_hash, 16);
+		ret = sync_forward_message(my_successor.portnum, "GET_SUCCESSOR", succ_msg);
+		if (ret == -1) {
+			printf("ERror detected in forwarding msg 2\n");
+			my_successor_of_successor.portnum = 0;
+		} else {
+			sprintf(succ_buf, "localhost%s", succ_msg);
+			calculatehash(succ_buf, strlen(succ_buf), succ_hash);
+			my_successor_of_successor.portnum = atoi(succ_msg);
+			memcpy(my_successor_of_successor.h, succ_hash, 16);
+		}
 		//printf("--> .%s. %d\n", buf);
 		//printhash(myhash);
 		//printf(" ");
@@ -639,6 +697,10 @@ void * stabilise(void *arg)
 			printf("\n"); */
 		}
 
+		if (my_predecessor.portnum != 0 &&  test_connect(my_predecessor.portnum) == -1) {
+			my_predecessor.portnum = 0;
+		}
+
 	}
 }
 
@@ -660,7 +722,7 @@ void server_listen(int is_join) {
 		exit(1);
 	}
 
-	setsockopt(s,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
+	//setsockopt(s,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
 
 	memset((char *) &sock_server, 0, sizeof(sock_server));
 	sock_server.sin_family = AF_INET;
@@ -758,7 +820,11 @@ void server_listen(int is_join) {
 			} else {
 				/* Forward the message */
 				sprintf(msg, "GET_CONFIDENCE:%s", key);
-				sync_forward_message(destport, msg, clbuf);
+				ret = sync_forward_message(destport, msg, clbuf);
+				if (ret == -1) {
+					printf("ERror detected in forwarding msg 2\n");
+					strcpy(clbuf, "Node down. ETRYAGAIN\n");
+				}
 				printf("Will send this to client: %s\n", clbuf);
 				ret = send(client, clbuf, strlen(clbuf) + 1, 0);
 				printf("Get send bytes: %d\n", ret);
@@ -886,7 +952,13 @@ create_pthread:
 			sprintf(clbuf, "localhost%s", key);
 			calculatehash(clbuf, strlen(clbuf), keyhash);
 			pthread_mutex_lock(&mutex);
-			if (memcmp(my_predecessor.h, keyhash, 16) != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
+			if (my_predecessor.portnum == 0) {
+				my_predecessor.portnum = atoi(key);
+				copyhash(my_predecessor.h, keyhash);
+				printf("%d: New predecessor set to %d:", my_portnum, my_predecessor.portnum);
+				printhash(my_predecessor.h);
+				printf("\n");
+			} else if (memcmp(my_predecessor.h, keyhash, 16) != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
 				my_predecessor.portnum = atoi(key);
 				copyhash(my_predecessor.h, keyhash);
 				for(i = 0; i < MAX_TUPLES; i++) {
@@ -980,6 +1052,7 @@ void read_nodelist_and_find_successor()
 		tok = strtok(NULL, "\n");
 	}
 
+	printf("Found source node: %d\n", portnum);
 	close(fd);
 	if (tok == NULL) {
 		printf("No one is alive\n");
@@ -1002,10 +1075,15 @@ void read_nodelist_and_find_successor()
 		calculatehash(msg, strlen(msg), my_successor.h);
 
 		sprintf(msg, "GET_SUCCESSOR");
-		sync_forward_message(my_successor.portnum, msg, buf);
-		my_successor_of_successor.portnum = atoi(buf);
-		sprintf(msg, "localhost%d", my_successor_of_successor.portnum);
-		calculatehash(msg, strlen(msg), my_successor_of_successor.h);
+		ret = sync_forward_message(my_successor.portnum, msg, buf);
+		if (ret == -1) {
+			printf("ERror detected in forwarding msg 4\n");
+			my_successor_of_successor.portnum = 0;
+		} else {
+			my_successor_of_successor.portnum = atoi(buf);
+			sprintf(msg, "localhost%d", my_successor_of_successor.portnum);
+			calculatehash(msg, strlen(msg), my_successor_of_successor.h);
+		}
 
 		printf("Successor is: %d ", my_successor.portnum);
 		printhash(my_successor.h);
