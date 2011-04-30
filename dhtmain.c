@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <sys/file.h>
 #include <math.h>
+#include <pthread.h>
 
 #define BUFLEN 512
 #define NODEFILE	"nodelist"
@@ -485,6 +486,32 @@ close:
 		close(sc);
 }
 
+void * stabilise(void *arg)
+{
+	char msg[10], buf[20];
+	unsigned char hash[16];
+	while(1) {
+		//printf("In pthread\n");
+		sync_forward_message(my_successor.portnum, "GET_PREDECESSOR", msg);
+		//printf("%d: My predecessor is: %s\n", my_portnum, msg);
+		sprintf(buf, "localhost%s", msg);
+		calculatehash(buf, strlen(buf), hash);
+		//printf("--> .%s. %d\n", buf);
+		//printhash(myhash);
+		//printf(" ");
+		//printhash(hash);
+		//printf("\n");
+		if (memcmp(hash, myhash, 16) != 0 && is_in_between(myhash, my_successor.h, hash)) {
+			printf("hmm new node found\n");
+			my_successor.portnum = atoi(msg);
+			memcpy(my_successor.h, hash, 16);
+		}
+		sprintf(buf, "NOTIFY:%d", my_portnum);
+		forward_message(my_successor.portnum, buf);
+		sleep(5);
+	}
+}
+
 void server_listen(int is_join) {
 	struct sockaddr_in sock_server, sock_client;
 	int s, slen = sizeof(sock_client);
@@ -492,6 +519,8 @@ void server_listen(int is_join) {
 	char buf[BUFLEN], msg[BUFLEN], clbuf[BUFLEN];
 	int client, next, fd, i, destport, tmpportnum;
 	int opt=1, ret;
+	pthread_t stabilise_thread;
+	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 	unsigned char keyhash[16];
 
@@ -522,8 +551,14 @@ void server_listen(int is_join) {
 
 	if (is_join == 0)
 		initialize_host(portnum);
-	else
+	else {
 		read_nodelist_and_find_successor();
+		/* Start a new thread here */
+		if (pthread_create(&stabilise_thread, NULL, stabilise, NULL) != 0) {
+			printf("Thread creation failed\n");
+			exit(1);
+		}
+	}
 
 	if (listen(s, 10) == -1) {
 		printf("listen error");
@@ -551,7 +586,7 @@ void server_listen(int is_join) {
 			exit(1);
 		} else if (ret == 0)
 			goto close;
-		printf("%d: Received: %s\n", my_portnum, buf);
+		//printf("%d: Received: %s\n", my_portnum, buf);
 
 		command = strtok(buf, ":");
 		if (strcmp(command, "END") == 0) {
@@ -643,7 +678,7 @@ void server_listen(int is_join) {
 			printf("%d: Start command received\n", my_portnum);
 			if (is_initiator == 1) {
 				is_initiator = 0;
-				goto close;
+				goto create_pthread;
 			} else {
 				fd = open(NODEFILE, O_RDWR | O_CREAT, 0777);
 				init_node(portnum, fd);
@@ -653,6 +688,15 @@ void server_listen(int is_join) {
 			next = find_next(my_portnum);
 			create_finger_table(my_portnum);
 			forward_message(next, "START");
+create_pthread:
+			/* Start a new thread here */
+			if (pthread_create(&stabilise_thread, NULL, stabilise, NULL) != 0) {
+				printf("Thread creation failed\n");
+				exit(1);
+			}
+			pthread_mutex_lock(&mutex);
+			pthread_mutex_unlock(&mutex);
+	
 		} else if (strcmp(command, "GET_CONFIDENCE") == 0) {
 			key = strtok(NULL, ":");
 			printf("Search for: %s\n", key);
@@ -686,7 +730,7 @@ void server_listen(int is_join) {
 			key = strtok(NULL, ":");
 			sprintf(clbuf, "localhost%s", key);
 			calculatehash(clbuf, strlen(clbuf), keyhash);
-			if (is_in_between(my_predecessor.h, myhash, keyhash)) {
+			if (memcmp(my_predecessor.h, keyhash, 16) != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
 				my_predecessor.portnum = atoi(key);
 				copyhash(my_predecessor.h, keyhash);
 				printf("%d: New predecessor set to %d:", my_portnum, my_predecessor.portnum);
@@ -722,6 +766,9 @@ void read_nodelist_and_find_successor()
 	struct sockaddr_in sock_client;
 	struct hostent *hent;
 	int sock, slen = sizeof(sock_client), ret;
+
+	sprintf(buf, "localhost%d", my_portnum);
+	calculatehash(buf, strlen(buf), myhash);
 
 	fd = open(NODEFILE, O_RDONLY);
 	if (fd < 0) {
