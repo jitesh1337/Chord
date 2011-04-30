@@ -402,6 +402,7 @@ int find_successor(unsigned char keyhash[16], char *key, int flag, int wk_portnu
 	int i;
 	char msg[BUFLEN], hashop[33];
 	int resport, retflag=0;
+	unsigned char *hash;
 
 	pthread_mutex_lock(&mutex);
 	if (my_predecessor.portnum != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
@@ -422,9 +423,17 @@ int find_successor(unsigned char keyhash[16], char *key, int flag, int wk_portnu
 		printf(" ");
 		printhash(finger_table[(i+1)%128].h);
 		printf(" %d\n", is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)); */
-		if (is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)) {
+		if (finger_table[i].portnum == 0) {
+			printf("%d: Errrroooorrrrrrr: Zero entry found\n", my_portnum);
+			return -1;
+		}
+		if (i == 127)
+			hash = myhash;
+		else
+			hash = finger_table[i+1].h;
+		if (is_in_between(finger_table[i].h, hash, keyhash)) {
 			sprintf(msg, "GET_FORWARD:%d:%s", wk_portnum, key);
-			printf("-->%s\n", msg);
+			printf("%d: -->%s, will forward to: %d\n", my_portnum, msg, finger_table[i].portnum);
 			forward_message(finger_table[i].portnum, msg);
 			if (flag == 0)
 				/* No waiting */
@@ -434,6 +443,9 @@ int find_successor(unsigned char keyhash[16], char *key, int flag, int wk_portnu
 				return listen_on_well_known_port();
 		}
 	}
+
+	printf("DID NOT FORWARD TO ANYONEE \n\n");
+	return -2;
 }
 
 void sync_forward_message(int port, char *m, char *buf)
@@ -826,6 +838,7 @@ void read_nodelist_and_find_successor()
 
 	sprintf(buf, "localhost%d", my_portnum);
 	calculatehash(buf, strlen(buf), myhash);
+	memset(finger_table, 0, sizeof(finger_table));
 
 	fd = open(NODEFILE, O_RDONLY);
 	if (fd < 0) {
