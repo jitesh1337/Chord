@@ -408,10 +408,15 @@ int listen_on_well_known_port()
 int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 {
 	int i;
-	char msg[BUFLEN], hashop[33];
+	char msg[BUFLEN], hashop[33], buf[BUFLEN];
 	int resport, retflag=0;
 	unsigned char *hash;
 
+	/*printf("############## -> Successsor port: %d, pred port: %d ", my_successor.portnum, my_predecessor.portnum);
+	printhash(my_successor.h);
+	printf(" ");
+	printhash(my_predecessor.h);
+	printf("\n"); */
 	pthread_mutex_lock(&mutex);
 	if (my_predecessor.portnum != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
 		resport = my_portnum;	
@@ -432,8 +437,17 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 		printhash(finger_table[(i+1)%128].h);
 		printf(" %d\n", is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)); */
 		if (finger_table[i].portnum == 0) {
-			printf("%d: Errrroooorrrrrrr: Zero entry found\n", my_portnum);
-			return -1;
+			sprinthash(keyhash, hashop);
+			//printf("%d: Errrroooorrrrrrr: Zero entry found\n", my_portnum);
+			sprintf(msg, "GET_FORWARD:%d:%s", wk_portnum, hashop);
+			//printf("%d: -->%s, will forward to: %d, %d\n", my_portnum, msg, my_successor.portnum, flag);
+			forward_message(my_successor.portnum, msg);
+			if (flag == 0)
+				/* No waiting */
+				return -1;
+			else
+				/* Wait for response and return the response */
+				return listen_on_well_known_port();
 		}
 		if (i == 127)
 			hash = myhash;
@@ -442,7 +456,7 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 		if (is_in_between(finger_table[i].h, hash, keyhash)) {
 			sprinthash(keyhash, hashop);
 			sprintf(msg, "GET_FORWARD:%d:%s", wk_portnum, hashop);
-			printf("%d: -->%s, will forward to: %d\n", my_portnum, msg, finger_table[i].portnum);
+			//printf("%d: -->%s, will forward to: %d, %d\n", my_portnum, msg, finger_table[i].portnum, flag);
 			forward_message(finger_table[i].portnum, msg);
 			if (flag == 0)
 				/* No waiting */
@@ -453,7 +467,7 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 		}
 	}
 
-	printf("DID NOT FORWARD TO ANYONEE \n\n");
+	//printf("DID NOT FORWARD TO ANYONEE \n\n");
 	return -2;
 }
 
@@ -556,7 +570,9 @@ close:
 void * stabilise(void *arg)
 {
 	char msg[10], buf[20];
-	unsigned char hash[16];
+	unsigned char hash[16], result[16];
+	int i, successor;
+
 	while(1) {
 		//printf("In pthread\n");
 		sync_forward_message(my_successor.portnum, "GET_PREDECESSOR", msg);
@@ -580,6 +596,23 @@ void * stabilise(void *arg)
 		sprintf(buf, "NOTIFY:%d", my_portnum);
 		forward_message(my_successor.portnum, buf);
 		sleep(5);
+
+		/* fix fingers */
+		for (i=0 ; i<128 ; i++) {
+			add(myhash, i, result);
+			successor = find_successor(result, 1, well_known_port);
+			if (successor != -2) {
+				finger_table[i].portnum = successor;
+				sprintf(buf, "localhost%d", successor);
+				calculatehash(buf, strlen(buf), finger_table[i].h);
+			}
+			/* printf("%d) %d: ", i, finger_table[i].portnum);
+			printhash(finger_table[i].h);
+			printf(" ");
+			printhash(result);
+			printf("\n"); */
+		}
+
 	}
 }
 
@@ -708,17 +741,18 @@ void server_listen(int is_join) {
 		else if (strcmp(command, "GET_FORWARD") == 0) {
 			tmpport = strtok(NULL, ":");
 			tmpportnum = atoi(tmpport);
-			printf("Port in GET_FORWARD: %d\n", tmpportnum);
+			//printf("Port in GET_FORWARD: %d\n", tmpportnum);
 
 			key = strtok(NULL, ":");
 			for(i = 0; i < 16; i++) {
 				keyhash[i] = num(key[2*i]) * 16 + num(key[2*i+1]);
 			}
 			//calculatehash(key, strlen(key), keyhash);
-			printhash(keyhash);
-			printf("\n");
+			//printhash(keyhash);
+			//printf("\n");
 		
 			destport = find_successor(keyhash, 0, tmpportnum);
+			//printf("MY successor: %d and got successor: %d\n", my_successor.portnum, destport);
 
 			if (destport == -2) {
 				sprintf(msg, "%d", -2);
@@ -730,9 +764,16 @@ void server_listen(int is_join) {
 			/* If my successor is "the" man, send it portnum to the listening process */
 			if (destport == my_successor.portnum) {
 				sprintf(msg, "%d", my_successor.portnum);
+				//printf("fsdgs %d, %s\n\n", tmpportnum, msg);
+				pthread_mutex_unlock(&mutex);
+				forward_message(tmpportnum, msg);
+			} else if (destport == my_portnum) {
+				sprintf(msg, "%d", my_portnum);
+				//printf("fsdgs %d, %s\n\n", tmpportnum, msg);
 				pthread_mutex_unlock(&mutex);
 				forward_message(tmpportnum, msg);
 			} else {
+				//printf("sdgsswsysrysfas\n\n");
 				pthread_mutex_unlock(&mutex);
 			}	
 			
@@ -795,8 +836,8 @@ create_pthread:
 			key = strtok(NULL, ":");
 			printf("Search for: %s\n", key);
 			for(i = 0; i < MAX_TUPLES; i++) {
-				if (strlen(key_vals[i].key) == 0)
-					goto close;
+				//if (strlen(key_vals[i].key) == 0)
+				//	goto close;
 
 				if (strcmp(key, key_vals[i].key) == 0) {
 					printf("found %s:%s\n", key, key_vals[i].value); fflush(stdout);
@@ -829,6 +870,15 @@ create_pthread:
 			if (memcmp(my_predecessor.h, keyhash, 16) != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
 				my_predecessor.portnum = atoi(key);
 				copyhash(my_predecessor.h, keyhash);
+				for(i = 0; i < MAX_TUPLES; i++) {
+					calculatehash(key_vals[i].key, strlen(key_vals[i].key), keyhash);
+					if (strlen(key_vals[i].key) > 0 && !is_in_between(my_predecessor.h, myhash, keyhash)) {
+						sprintf(msg, "PUT_CONFIDENCE:%s:%s", key_vals[i].key, key_vals[i].value);
+						printf("%d: Sent %s:%s to %d\n", my_portnum, key_vals[i].key, key_vals[i].value, my_predecessor.portnum);
+						forward_message(my_predecessor.portnum, msg);
+						strcpy(key_vals[i].key, "");
+					}
+				}
 				printf("%d: New predecessor set to %d:", my_portnum, my_predecessor.portnum);
 				printhash(my_predecessor.h);
 				printf("\n");
@@ -929,9 +979,11 @@ void read_nodelist_and_find_successor()
 			exit(1);
 		}
 		my_successor.portnum = successor;
-		sprintf(msg, "localhost%d", my_portnum);
+		sprintf(msg, "localhost%d", successor);
 		calculatehash(msg, strlen(msg), my_successor.h);
-		printf("Successor is: %d\n", my_successor.portnum);
+		printf("Successor is: %d ", my_successor.portnum);
+		printhash(my_successor.h);
+		printf("\n");
 	}
 }
 
