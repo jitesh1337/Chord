@@ -45,6 +45,7 @@ unsigned char myhash[16];
 struct node_entry finger_table[128];
 
 int well_known_port = 10000;
+int well_known_socket;
 
 #define	MAX_TUPLES 1000
 struct key_val {
@@ -112,6 +113,42 @@ void add(unsigned char h[16], int i, unsigned char r[16])
                         carry = 1;
                 }
         }
+}
+
+void generate_well_known_port()
+{
+	struct sockaddr_in sock_server, sock_client;
+	int slen = sizeof(sock_client), portnum = 50000;
+	int opt=1;
+
+	if ((well_known_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+		printf("error in socket creation");
+		exit(1);
+	}
+
+	setsockopt(well_known_socket, SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
+
+	memset((char *) &sock_server, 0, sizeof(sock_server));
+	sock_server.sin_family = AF_INET;
+	sock_server.sin_port = htons(portnum);
+	sock_server.sin_addr.s_addr = htonl(INADDR_ANY);
+
+	/* Each server instance created should listen on a different port. Generate a random number between 1024 to 65535.
+ 	   Keep on generating new random numbers until bind succeeds.
+ 	 */
+	while (bind(well_known_socket, (struct sockaddr *) &sock_server, sizeof(sock_server)) == -1) {
+		portnum = rand() % ( (65535-1024) + 1024);
+		//if (portnum == well_known_port)
+		//	continue;
+		sock_server.sin_port = htons(portnum);
+	}
+	well_known_port = portnum;
+	printf("Well know port: %d\n", well_known_port);
+
+	if (listen(well_known_socket, 10) == -1) {
+		printf("listen error");
+		exit(1);
+	}
 }
 
 void init_node(int portnum, int fd)
@@ -314,13 +351,13 @@ void initialize_host(int portnum)
 int listen_on_well_known_port()
 {
 	struct sockaddr_in sock_server, sock_client;
-	int s, slen = sizeof(sock_client);
+	int slen = sizeof(sock_client);
 	char command[10];
 	int client;
 	int destport, ret;
 	int opt=1;
 
-	if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+	/* if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		printf("error in socket creation");
 		exit(1);
 	}
@@ -339,9 +376,9 @@ int listen_on_well_known_port()
 	if (listen(s, 10) == -1) {
 		printf("listen error");
 		exit(1);
-	}
+	} */
 
-	if ((client = accept(s, (struct sockaddr *) &sock_client, &slen)) == -1) {
+	if ((client = accept(well_known_socket, (struct sockaddr *) &sock_client, &slen)) == -1) {
 		printf("accept error");
 		exit(1);
 	}
@@ -353,12 +390,12 @@ int listen_on_well_known_port()
 
 	destport = atoi(command);
 	close(client);
-	close(s);
+	//close(s);
 
 	return(destport);
 }
 
-int find_successor(unsigned char keyhash[16], char *key, int flag)
+int find_successor(unsigned char keyhash[16], char *key, int flag, int wk_portnum)
 {
 	int i;
 	char msg[BUFLEN], hashop[33];
@@ -377,7 +414,7 @@ int find_successor(unsigned char keyhash[16], char *key, int flag)
 		printhash(finger_table[(i+1)%128].h);
 		printf(" %d\n", is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)); */
 		if (is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)) {
-			sprintf(msg, "GET_FORWARD:%d:%s", well_known_port, key);
+			sprintf(msg, "GET_FORWARD:%d:%s", wk_portnum, key);
 			printf("-->%s\n", msg);
 			forward_message(finger_table[i].portnum, msg);
 			if (flag == 0)
@@ -549,6 +586,13 @@ void server_listen(int is_join) {
 	}
 	my_portnum = portnum;
 
+	if (listen(s, 10) == -1) {
+		printf("listen error");
+		exit(1);
+	}
+
+	generate_well_known_port();
+
 	if (is_join == 0)
 		initialize_host(portnum);
 	else {
@@ -558,11 +602,6 @@ void server_listen(int is_join) {
 			printf("Thread creation failed\n");
 			exit(1);
 		}
-	}
-
-	if (listen(s, 10) == -1) {
-		printf("listen error");
-		exit(1);
 	}
 
 	char nodehash_string[20], hash[16];
@@ -604,7 +643,7 @@ void server_listen(int is_join) {
 			
 			/* Find the successor. If the successor is self, search in self-list */
 			/* "1" means that find_successor waits till entire resolution is complete */
-			destport =  find_successor(keyhash, key, 1);
+			destport =  find_successor(keyhash, key, 1, well_known_port);
 			printf("Found desination: %d\n", destport);
 			//goto close;
 
@@ -638,7 +677,7 @@ void server_listen(int is_join) {
 			printhash(keyhash);
 			printf("\n");
 			
-			destport = find_successor(keyhash, key, 0);
+			destport = find_successor(keyhash, key, 0, tmpportnum);
 
 			/* If my successor is "the" man, send it portnum to the listening process */
 			if (destport == my_successor.portnum) {
@@ -655,7 +694,7 @@ void server_listen(int is_join) {
 			printhash(keyhash);
 			printf("\n");
 
-			destport =  find_successor(keyhash, key, 1);
+			destport =  find_successor(keyhash, key, 1, well_known_port);
 			printf("Found desination: %d\n", destport);
 			//goto close;
 
