@@ -53,6 +53,8 @@ struct key_val {
 	char value[128];
 } key_vals[MAX_TUPLES];
 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 void printhash(unsigned char h[16])
 {	 int i;
 	 for(i=0;i<16;i++)
@@ -399,12 +401,19 @@ int find_successor(unsigned char keyhash[16], char *key, int flag, int wk_portnu
 {
 	int i;
 	char msg[BUFLEN], hashop[33];
+	int resport, retflag=0;
 
+	pthread_mutex_lock(&mutex);
 	if (my_predecessor.portnum != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
-		return my_portnum;	
+		resport = my_portnum;	
+		retflag = 1;
 	} else if (my_successor.portnum != 0 &&  is_in_between(myhash, my_successor.h, keyhash) ) {
-		return my_successor.portnum;
+		resport = my_successor.portnum;
+		retflag = 1;
 	}
+	pthread_mutex_unlock(&mutex);
+	if ( retflag )
+		return resport;
 
 	for (i=0 ; i<128 ; i++) {
 		/*printhash(finger_table[i].h);
@@ -538,11 +547,15 @@ void * stabilise(void *arg)
 		//printf(" ");
 		//printhash(hash);
 		//printf("\n");
+		//pthread_mutex_lock(&mutex);
 		if (memcmp(hash, myhash, 16) != 0 && is_in_between(myhash, my_successor.h, hash)) {
 			printf("hmm new node found\n");
+			pthread_mutex_lock(&mutex);
 			my_successor.portnum = atoi(msg);
 			memcpy(my_successor.h, hash, 16);
+			pthread_mutex_unlock(&mutex);
 		}
+		//pthread_mutex_unlock(&mutex);
 		sprintf(buf, "NOTIFY:%d", my_portnum);
 		forward_message(my_successor.portnum, buf);
 		sleep(5);
@@ -557,7 +570,6 @@ void server_listen(int is_join) {
 	int client, next, fd, i, destport, tmpportnum;
 	int opt=1, ret;
 	pthread_t stabilise_thread;
-	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 	unsigned char keyhash[16];
 
@@ -676,15 +688,19 @@ void server_listen(int is_join) {
 			calculatehash(key, strlen(key), keyhash);
 			printhash(keyhash);
 			printf("\n");
-			
+		
 			destport = find_successor(keyhash, key, 0, tmpportnum);
 
+			pthread_mutex_lock(&mutex);	
 			/* If my successor is "the" man, send it portnum to the listening process */
 			if (destport == my_successor.portnum) {
 				sprintf(msg, "%d", my_successor.portnum);
+				pthread_mutex_unlock(&mutex);
 				forward_message(tmpportnum, msg);
-			}
-
+			} else {
+				pthread_mutex_unlock(&mutex);
+			}	
+			
 		}
 		else if (strcmp(command, "PUT") == 0) {
 			key = strtok(NULL, ":");
@@ -769,6 +785,7 @@ create_pthread:
 			key = strtok(NULL, ":");
 			sprintf(clbuf, "localhost%s", key);
 			calculatehash(clbuf, strlen(clbuf), keyhash);
+			pthread_mutex_lock(&mutex);
 			if (memcmp(my_predecessor.h, keyhash, 16) != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
 				my_predecessor.portnum = atoi(key);
 				copyhash(my_predecessor.h, keyhash);
@@ -776,6 +793,7 @@ create_pthread:
 				printhash(my_predecessor.h);
 				printf("\n");
 			}
+			pthread_mutex_unlock(&mutex);
 		} else if (strcmp(command, "PRINT") == 0) {
 			key = strtok(NULL, ":");
 			if (key == NULL)
