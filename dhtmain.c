@@ -671,6 +671,11 @@ void server_listen(int is_join) {
 			printf("Found desination: %d\n", destport);
 			//goto close;
 
+			if (destport == -2) {
+				ret = send(client, "Node not found", 15, 0);
+				goto close;
+			}
+
 			/* Search in self-list */
 			if (destport == my_portnum) {
 				for(i = 0; i < MAX_TUPLES; i++) {
@@ -703,6 +708,12 @@ void server_listen(int is_join) {
 		
 			destport = find_successor(keyhash, key, 0, tmpportnum);
 
+			if (destport == -2) {
+				sprintf(msg, "%d", -2);
+				forward_message(tmpportnum, msg);
+				goto close;
+			}
+
 			pthread_mutex_lock(&mutex);	
 			/* If my successor is "the" man, send it portnum to the listening process */
 			if (destport == my_successor.portnum) {
@@ -725,6 +736,10 @@ void server_listen(int is_join) {
 			destport =  find_successor(keyhash, key, 1, well_known_port);
 			printf("Found desination: %d\n", destport);
 			//goto close;
+			if (destport == -2) {
+				ret = send(client, "Node not found", 15, 0);
+				goto close;
+			}
 
 			/* Search in self-list */
 			if (destport == my_portnum) {
