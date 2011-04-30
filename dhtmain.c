@@ -471,6 +471,25 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 	return -2;
 }
 
+void insert(char key[BUFLEN], char value[BUFLEN])
+{
+	int i;
+
+	for(i = 0; i < MAX_TUPLES; i++) {
+		if ( strlen(key_vals[i].key) != 0 && strcmp(key_vals[i].key, key) == 0) {
+			strcpy(key_vals[i].value, value);
+			return;
+		}
+	}
+	for(i = 0; i < MAX_TUPLES; i++) {
+		if (strlen(key_vals[i].key) == 0) {
+			strcpy(key_vals[i].key, key);
+			strcpy(key_vals[i].value, value);
+			return;
+		}
+	}
+}
+
 void sync_forward_message(int port, char *m, char *buf)
 {
 	struct sockaddr_in sock_client;
@@ -796,13 +815,7 @@ void server_listen(int is_join) {
 
 			/* Search in self-list */
 			if (destport == my_portnum) {
-				for(i = 0; i < MAX_TUPLES; i++) {
-					if (strlen(key_vals[i].key) == 0) {
-						strcpy(key_vals[i].key, key);
-						strcpy(key_vals[i].value, value);
-						goto close;
-					}
-				}
+				insert(key, value);
 			} else {
 				/* Forward the message */
 				sprintf(msg, "PUT_CONFIDENCE:%s:%s", key, value);
@@ -850,13 +863,7 @@ create_pthread:
 			key = strtok(NULL, ":");
 			value = strtok(NULL, ":");
 			printf("%d: Putting - %s:%s\n", my_portnum, key, value);
-			for(i = 0; i < MAX_TUPLES; i++) {
-				if (strlen(key_vals[i].key) == 0) {
-					strcpy(key_vals[i].key, key);
-					strcpy(key_vals[i].value, value);
-					goto close;
-				}
-			}
+			insert(key, value);
 		} else if (strcmp(command, "GET_PREDECESSOR") == 0) {
 			sprintf(msg, "%d", my_predecessor.portnum);
 			ret = send(client, msg, strlen(msg)+1, 0);	
