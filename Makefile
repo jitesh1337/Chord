@@ -1,3 +1,5 @@
+all:	default client
+
 default: dhtmain.c
 	gcc -o dhtmain dhtmain.c -lcrypto -lm -lpthread
 

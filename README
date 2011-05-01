@@ -40,3 +40,16 @@ periodic stabilisations adjust the predecessors/successors to include the new
 noe in the ring. Periodically, the finger tables are also refreshed. We have
 eliminted all races for the ring, but there *might* be rare conditions for
 updating finger tables.
+
+How to compile and run:
+----------------------
+$ make
+does all the compilation
+
+$ make dhtmain
+Compiles just dhtmain.c
+
+$ make client
+Compiles client.c
+
+Run as specified on the web-page

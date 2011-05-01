@@ -28,7 +28,7 @@
 int main(int argc, char *argv[]) {
 	struct sockaddr_in sr;
 	int s, i, slen = sizeof(sr);
-	char buf[BUFLEN];
+	char buf[BUFLEN], send_buf[BUFLEN];
 	struct hostent *hent;
 
 	int portnum;
@@ -66,8 +66,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (strncmp(buf, "GET", 3) == 0) {
-		recv(s, buf, BUFLEN, 0);
-		printf("Answer: %s\n", buf);
+		recv(s, send_buf, BUFLEN, 0);
+		printf("found: %s:%s\n", buf + 4, send_buf);
 	}
 
 	close(s);
