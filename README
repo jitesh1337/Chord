@@ -21,10 +21,6 @@ would be nice if you could give us a stabilisation time 12-seconds after
 a join/leave. (i.e. do no other activity or queries for 12 seconds after
 a join/leave).
 
-NOTE
-Our "cur_host" variable is actually "is_initiator". We didn't have much
-time to change it later. Sorry about that. 
-
 General Architecture features
 ----------------------------
 1) At the start, all nodes read the nodelist file to construct the finger tables.

@@ -34,7 +34,7 @@
 int curr_host;
 int TOTAL_NODES;
 int portnum = 50000;
-int my_portnum, is_initiator = 0;
+int my_portnum, curr_host = 0;
 
 int forward_message(int port, char *m);
 void read_nodelist_and_find_successor();
@@ -325,7 +325,7 @@ void initialize_host(int portnum)
 		qsort(node_list, TOTAL_NODES, sizeof(struct node_entry), compare_nodes);
 		next = find_next(portnum);
 		//printf("%d: Next port: %d\n", my_portnum, next);
-		is_initiator = 1;
+		curr_host = 1;
 		create_finger_table(portnum);
 		forward_message(next, "START");
 
@@ -739,9 +739,9 @@ void server_listen(int is_join) {
        	                forward_message(my_successor.portnum, msg);
 
                         if (key == NULL)
-                                is_initiator = 1;
-                        else if (is_initiator == 1) {
-                                is_initiator = 0;
+                                curr_host = 1;
+                        else if (curr_host == 1) {
+                                curr_host = 0;
 				remove(NODEFILE);
 				exitflag = 1;
                                 goto close;
@@ -851,8 +851,8 @@ void server_listen(int is_join) {
 
 		} else if (strcmp(command, "START") == 0) {
 			//printf("%d: Start command received\n", my_portnum);
-			if (is_initiator == 1) {
-				is_initiator = 0;
+			if (curr_host == 1) {
+				curr_host = 0;
 				goto create_pthread;
 			} else {
 				fd = open(NODEFILE, O_RDWR | O_CREAT, 0777);
@@ -932,9 +932,9 @@ create_pthread:
 		} else if (strcmp(command, "PRINT") == 0) {
 			key = strtok(NULL, ":");
 			if (key == NULL)
-				is_initiator = 1;
-			else if (is_initiator == 1) {
-				is_initiator = 0;
+				curr_host = 1;
+			else if (curr_host == 1) {
+				curr_host = 0;
 				goto close;
 			}
 
