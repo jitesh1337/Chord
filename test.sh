@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PORT=28835
+PORT=50000
 
 ./client $PORT "PUT:Jitesh:Shah"
 ./client $PORT "PUT:Jitesh1:Shah1"

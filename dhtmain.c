@@ -615,7 +615,7 @@ void server_listen(int is_join) {
 	char *command, *key, *value, *tmpport, *tmp;
 	char buf[BUFLEN], msg[BUFLEN], clbuf[BUFLEN];
 	int client, next, fd, i, destport, tmpportnum;
-	int opt=1, ret;
+	int opt=1, ret, exitflag=0;
 	pthread_t stabilise_thread;
 
 	unsigned char keyhash[16];
@@ -686,7 +686,23 @@ void server_listen(int is_join) {
 		command = strtok(buf, ":");
 		if (strcmp(command, "END") == 0) {
 
-				printf("END message received \n");
+			printf("End command Received %d\n", my_portnum);
+                        key = strtok(NULL, ":");
+
+                        sprintf(msg, "END:%d", 0);
+       	                forward_message(my_successor.portnum, msg);
+
+                        if (key == NULL)
+                                is_initiator = 1;
+                        else if (is_initiator == 1) {
+                                is_initiator = 0;
+				remove(NODEFILE);
+				exitflag = 1;
+                                goto close;
+                        } else {
+				exitflag = 1;
+				goto close;
+			}
 
 		}
 		else if (strcmp(command, "GET") == 0) {
@@ -888,6 +904,8 @@ create_pthread:
 		}
 close:
 		close(client);
+		if ( exitflag == 1 )
+			break;
 	}
 
 	close(s);
