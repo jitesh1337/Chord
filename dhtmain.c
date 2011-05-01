@@ -709,6 +709,7 @@ void server_listen(int is_join) {
 						goto close;
 					if (strcmp(key, key_vals[i].key) == 0) {
 						//printf("found %s:%s\n", key, key_vals[i].value);
+						printf("Found key value pair (%s:%s)\n", key, key_vals[i].value);
 						ret = send(client, key_vals[i].value, strlen(key_vals[i].value) + 1, 0);
 						goto close;
 					}
