@@ -136,8 +136,6 @@ void generate_well_known_port()
 		exit(1);
 	}
 
-	//setsockopt(well_known_socket, SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
-
 	memset((char *) &sock_server, 0, sizeof(sock_server));
 	sock_server.sin_family = AF_INET;
 	sock_server.sin_port = htons(portnum);
@@ -148,12 +146,9 @@ void generate_well_known_port()
  	 */
 	while (bind(well_known_socket, (struct sockaddr *) &sock_server, sizeof(sock_server)) == -1) {
 		portnum = rand() % ( (65535-1024) + 1024);
-		//if (portnum == well_known_port)
-		//	continue;
 		sock_server.sin_port = htons(portnum);
 	}
 	well_known_port = portnum;
-	printf("Well know port: %d\n", well_known_port);
 
 	if (listen(well_known_socket, 10) == -1) {
 		printf("listen error");
@@ -232,12 +227,8 @@ int is_in_between(unsigned char prev[16], unsigned char next[16], unsigned char 
 {
 	int ret1, ret2;
 
-	//if (compare_nodes(prev, next) <= 0) {
 	if (memcmp(prev, next, 16) <= 0) {
 		if (memcmp(prev, result, 16) <= 0 && memcmp(result, next, 16) < 0) {
-			#if DEBUG
-			printf ("%d %d ", memcmp(prev, result, 16), memcmp(result, next, 16));
-			#endif
 			return 1;
 		}
 	} else {
@@ -260,43 +251,18 @@ void create_finger_table(int my_portnum)
 	my_predecessor.portnum = find_prev(my_portnum);
 	get_hash(my_predecessor.portnum, my_predecessor.h);
 
-	#if DEBUG
-	printf("My(%d) Successor: %d ", my_portnum, my_successor.portnum);
-	printhash(my_successor.h);
-	printf("\n");
-	printf("My(%d) Predecessor: %d\n", my_portnum, my_predecessor.portnum);
-	printhash(my_predecessor.h);
-	printf("\n");
-	#endif
 	memset(key_vals, 0, sizeof(key_vals));
 
 	for ( i=0 ; i<128 ; i++ ) {
 		add(myhash, i, result);
 		for  (j=0 ; j<TOTAL_NODES ; j++ ) {
-			if ( is_in_between(node_list[j].h, node_list[(j+1)%TOTAL_NODES].h, result)) {
-				#if DEBUG	
-				printhash(node_list[j].h);
-				printf(" ");
-				printhash(result);
-				printf(" ");
-				printhash(node_list[(j+1)%TOTAL_NODES].h);
-				printf("  %d", is_in_between(node_list[j].h, node_list[(j+1)%TOTAL_NODES].h, result));
-				printf("\n");
-				#endif
+			if (is_in_between(node_list[j].h, node_list[(j+1)%TOTAL_NODES].h, result)) {
 				copyhash(finger_table[i].h, node_list[(j+1)%TOTAL_NODES].h);
 				finger_table[i].portnum = node_list[(j+1)%TOTAL_NODES].portnum;
 				break;
 			}
 		}
 	}
-
-#if DEBUG
-	for ( i=0 ; i<128 ; i++ ) {
-		printf("Finger %d) %d:",i, finger_table[i].portnum);
-		printhash(finger_table[i].h);
-		printf("\n");
-	}
-#endif
 }
 
 void initialize_host(int portnum) 
@@ -325,32 +291,26 @@ void initialize_host(int portnum)
 	tok = strtok(filestr, "\n");
 	while (tok != NULL) {
 		count++;
-		/* ptr = strstr(tok, ":");
-		while(*ptr != '\0') {
-			*ptr = *(ptr + 1);
-			ptr++;
-		}
-		printf(".%s.\n", tok);
-		*/
 		tok = strtok(NULL, "\n");
 	}
 
 	if (count == TOTAL_NODES) {
-		printf("I am %d and I will now start init\n", portnum);
+		//printf("I am %d and I will now start init\n", portnum);
 		init_node(portnum, fd);
 		qsort(node_list, TOTAL_NODES, sizeof(struct node_entry), compare_nodes);
 		next = find_next(portnum);
-		printf("%d: Next port: %d\n", my_portnum, next);
+		//printf("%d: Next port: %d\n", my_portnum, next);
 		is_initiator = 1;
 		create_finger_table(portnum);
 		forward_message(next, "START");
 
+		/*
 		int i;
 		for(i=0;i<TOTAL_NODES;i++) {
 			printf("Node %d)%d:",i,node_list[i].portnum);
 			printhash(node_list[i].h);
 			printf("\n");
-		}
+		} */
 	}
 
 
@@ -367,27 +327,6 @@ int listen_on_well_known_port()
 	int destport, ret;
 	int opt=1;
 
-	/* if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-		printf("error in socket creation");
-		exit(1);
-	}
-
-	setsockopt(s,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
-
-	memset((char *) &sock_server, 0, sizeof(sock_server));
-	sock_server.sin_family = AF_INET;
-	sock_server.sin_port = htons(well_known_port);
-	sock_server.sin_addr.s_addr = htonl(INADDR_ANY);
-	if (bind(s, (struct sockaddr *) &sock_server, sizeof(sock_server)) == -1) {
-		printf("error in binding socket");
-		exit(1);
-	}
-
-	if (listen(s, 10) == -1) {
-		printf("listen error");
-		exit(1);
-	} */
-
 	if ((client = accept(well_known_socket, (struct sockaddr *) &sock_client, &slen)) == -1) {
 		printf("accept error");
 		exit(1);
@@ -400,7 +339,6 @@ int listen_on_well_known_port()
 
 	destport = atoi(command);
 	close(client);
-	//close(s);
 
 	return(destport);
 }
@@ -412,11 +350,6 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 	int resport, retflag=0;
 	unsigned char *hash;
 
-	/*printf("############## -> Successsor port: %d, pred port: %d ", my_successor.portnum, my_predecessor.portnum);
-	printhash(my_successor.h);
-	printf(" ");
-	printhash(my_predecessor.h);
-	printf("\n"); */
 	pthread_mutex_lock(&mutex);
 	if (my_predecessor.portnum != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
 		resport = my_portnum;	
@@ -430,17 +363,9 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 		return resport;
 
 	for (i=0 ; i<128 ; i++) {
-		/*printhash(finger_table[i].h);
-		printf(" ");
-		printhash(keyhash);
-		printf(" ");
-		printhash(finger_table[(i+1)%128].h);
-		printf(" %d\n", is_in_between(finger_table[i].h, finger_table[(i+1)%128].h, keyhash)); */
 		if (finger_table[i].portnum == 0) {
 			sprinthash(keyhash, hashop);
-			//printf("%d: Errrroooorrrrrrr: Zero entry found\n", my_portnum);
 			sprintf(msg, "GET_FORWARD:%d:%s", wk_portnum, hashop);
-			//printf("%d: -->%s, will forward to: %d, %d\n", my_portnum, msg, my_successor.portnum, flag);
 			ret = forward_message(my_successor.portnum, msg);
 			if (ret == -1)
 				return -2;
@@ -459,7 +384,6 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 		if (is_in_between(finger_table[i].h, hash, keyhash)) {
 			sprinthash(keyhash, hashop);
 			sprintf(msg, "GET_FORWARD:%d:%s", wk_portnum, hashop);
-			//printf("%d: -->%s, will forward to: %d, %d\n", my_portnum, msg, finger_table[i].portnum, flag);
 			ret = forward_message(finger_table[i].portnum, msg);
 			if (ret == -1)
 				return -2;
@@ -472,18 +396,22 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 				return listen_on_well_known_port();
 		}
 	}
-
-	//printf("DID NOT FORWARD TO ANYONEE \n\n");
 	return -2;
 }
 
 void insert(char key[BUFLEN], char value[BUFLEN])
 {
 	int i;
+	unsigned char hash[16];
 
 	for(i = 0; i < MAX_TUPLES; i++) {
 		if ( strlen(key_vals[i].key) != 0 && strcmp(key_vals[i].key, key) == 0) {
 			strcpy(key_vals[i].value, value);
+
+			printf("(key:value) = (%s [", key);
+			calculatehash(key, strlen(key), hash);
+			printhash(hash);
+			printf("] :%s) updated\n", value);
 			return;
 		}
 	}
@@ -491,6 +419,11 @@ void insert(char key[BUFLEN], char value[BUFLEN])
 		if (strlen(key_vals[i].key) == 0) {
 			strcpy(key_vals[i].key, key);
 			strcpy(key_vals[i].value, value);
+
+			printf("(key:value) = (%s [", key);
+			calculatehash(key, strlen(key), hash);
+			printhash(hash);
+			printf("] :%s) inserted\n", value);
 			return;
 		}
 	}
@@ -517,8 +450,6 @@ int sync_forward_message(int port, char *m, char *buf)
 		exit(1);
 	}
 
-	//setsockopt(sc,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
-
 	memset((char *) &sock_client, 0, sizeof(sock_client));
 
 	sock_client.sin_family = AF_INET;
@@ -527,10 +458,9 @@ int sync_forward_message(int port, char *m, char *buf)
 
 	ret = connect(sc, (struct sockaddr *) &sock_client, slen);
 	if (ret == -1) {
-		perror("Why: ");
-		printf("connect failed: %d, ret: %d\n", port, ret);
+		//perror("Why: ");
+		//printf("connect failed: %d, ret: %d\n", port, ret);
 		close(sc);
-		//exit(1);
 		return -1;
 	}
 
@@ -557,14 +487,12 @@ int forward_message(int port, char *m)
 		struct sockaddr_in sock_client;
 		struct hostent *hent;
 		int sc, i, slen = sizeof(sock_client);
-		int opt=1, retry = 10, ret;
+		int opt=1, ret;
 
 		if ((sc = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 			printf("socket creation failed ");
 			exit(1);
 		}
-
-		//setsockopt(sc,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
 
 		hent = gethostbyname("localhost");
 		if(hent == NULL)
@@ -580,19 +508,10 @@ int forward_message(int port, char *m)
 
 		ret = connect(sc, (struct sockaddr *) &sock_client, slen);
 		if (ret == -1) {
-			printf("%d: connect to %d failed\n", my_portnum, port);
+			//printf("%d: connect to %d failed\n", my_portnum, port);
 			close(sc);
 			return -1;
 		}
-		/*	retry--;
-		if (retry < 0) {
-			printf("connect to %d failed %s\n", port, m);
-			goto close;
-		} */
-		/* {
-			printf("connect to %d failed %s\n", port, m);
-			goto close;
-		} */
 
 		if (send(sc, m, BUFLEN, 0) == -1) {
 			printf("send failed ");
@@ -638,7 +557,6 @@ void * stabilise(void *arg)
 	int i, successor, ret;
 
 	while(1) {
-		//printf("In pthread\n");
 		ret = sync_forward_message(my_successor.portnum, "GET_PREDECESSOR", msg);
 		if (ret == -1) {
 			my_successor.portnum = my_successor_of_successor.portnum;
@@ -649,13 +567,12 @@ void * stabilise(void *arg)
 				exit(1);
 			}
 		}
-		//printf("%d: My predecessor is: %s\n", my_portnum, msg);
 		sprintf(buf, "localhost%s", msg);
 		calculatehash(buf, strlen(buf), hash);
 
 		ret = sync_forward_message(my_successor.portnum, "GET_SUCCESSOR", succ_msg);
 		if (ret == -1) {
-			printf("ERror detected in forwarding msg 2\n");
+			//printf("ERror detected in forwarding msg 2\n");
 			my_successor_of_successor.portnum = 0;
 		} else {
 			sprintf(succ_buf, "localhost%s", succ_msg);
@@ -663,20 +580,13 @@ void * stabilise(void *arg)
 			my_successor_of_successor.portnum = atoi(succ_msg);
 			memcpy(my_successor_of_successor.h, succ_hash, 16);
 		}
-		//printf("--> .%s. %d\n", buf);
-		//printhash(myhash);
-		//printf(" ");
-		//printhash(hash);
-		//printf("\n");
-		//pthread_mutex_lock(&mutex);
 		if (memcmp(hash, myhash, 16) != 0 && is_in_between(myhash, my_successor.h, hash)) {
-			printf("hmm new node found\n");
+			//printf("hmm new node found\n");
 			pthread_mutex_lock(&mutex);
 			my_successor.portnum = atoi(msg);
 			memcpy(my_successor.h, hash, 16);
 			pthread_mutex_unlock(&mutex);
 		}
-		//pthread_mutex_unlock(&mutex);
 		sprintf(buf, "NOTIFY:%d", my_portnum);
 		forward_message(my_successor.portnum, buf);
 		sleep(5);
@@ -690,11 +600,6 @@ void * stabilise(void *arg)
 				sprintf(buf, "localhost%d", successor);
 				calculatehash(buf, strlen(buf), finger_table[i].h);
 			}
-			/* printf("%d) %d: ", i, finger_table[i].portnum);
-			printhash(finger_table[i].h);
-			printf(" ");
-			printhash(result);
-			printf("\n"); */
 		}
 
 		if (my_predecessor.portnum != 0 &&  test_connect(my_predecessor.portnum) == -1) {
@@ -721,8 +626,6 @@ void server_listen(int is_join) {
 		printf("error in socket creation");
 		exit(1);
 	}
-
-	//setsockopt(s,SOL_SOCKET,SO_REUSEADDR, (char *)&opt,sizeof(opt));
 
 	memset((char *) &sock_server, 0, sizeof(sock_server));
 	sock_server.sin_family = AF_INET;
@@ -779,7 +682,6 @@ void server_listen(int is_join) {
 			exit(1);
 		} else if (ret == 0)
 			goto close;
-		//printf("%d: Received: %s\n", my_portnum, buf);
 
 		command = strtok(buf, ":");
 		if (strcmp(command, "END") == 0) {
@@ -788,18 +690,12 @@ void server_listen(int is_join) {
 
 		}
 		else if (strcmp(command, "GET") == 0) {
-			printf("GETTTTTTT\n");
 			key = strtok(NULL, ":");
 			calculatehash(key, strlen(key), keyhash);
-			printf("%s:", key);
-			printhash(keyhash);
-			printf("\n");
 			
 			/* Find the successor. If the successor is self, search in self-list */
 			/* "1" means that find_successor waits till entire resolution is complete */
 			destport =  find_successor(keyhash, 1, well_known_port);
-			printf("Found desination: %d\n", destport);
-			//goto close;
 
 			if (destport == -2) {
 				ret = send(client, "Node not found", 15, 0);
@@ -812,39 +708,38 @@ void server_listen(int is_join) {
 					if (strlen(key) == 0)
 						goto close;
 					if (strcmp(key, key_vals[i].key) == 0) {
-						printf("found %s:%s\n", key, key_vals[i].value);
+						//printf("found %s:%s\n", key, key_vals[i].value);
 						ret = send(client, key_vals[i].value, strlen(key_vals[i].value) + 1, 0);
 						goto close;
 					}
 				}	
 			} else {
 				/* Forward the message */
+				printf("GET for %s [", key);
+				printhash(keyhash);
+				printf("] was forwarded to localhost:%d\n", destport);
+
 				sprintf(msg, "GET_CONFIDENCE:%s", key);
 				ret = sync_forward_message(destport, msg, clbuf);
 				if (ret == -1) {
-					printf("ERror detected in forwarding msg 2\n");
+					//printf("ERror detected in forwarding msg 2\n");
 					strcpy(clbuf, "Node down. ETRYAGAIN\n");
 				}
-				printf("Will send this to client: %s\n", clbuf);
+				//printf("Will send this to client: %s\n", clbuf);
 				ret = send(client, clbuf, strlen(clbuf) + 1, 0);
-				printf("Get send bytes: %d\n", ret);
+				//printf("Get send bytes: %d\n", ret);
 			}
 		}
 		else if (strcmp(command, "GET_FORWARD") == 0) {
 			tmpport = strtok(NULL, ":");
 			tmpportnum = atoi(tmpport);
-			//printf("Port in GET_FORWARD: %d\n", tmpportnum);
 
 			key = strtok(NULL, ":");
 			for(i = 0; i < 16; i++) {
 				keyhash[i] = num(key[2*i]) * 16 + num(key[2*i+1]);
 			}
-			//calculatehash(key, strlen(key), keyhash);
-			//printhash(keyhash);
-			//printf("\n");
 		
 			destport = find_successor(keyhash, 0, tmpportnum);
-			//printf("MY successor: %d and got successor: %d\n", my_successor.portnum, destport);
 
 			if (destport == -2) {
 				sprintf(msg, "%d", -2);
@@ -856,16 +751,13 @@ void server_listen(int is_join) {
 			/* If my successor is "the" man, send it portnum to the listening process */
 			if (destport == my_successor.portnum) {
 				sprintf(msg, "%d", my_successor.portnum);
-				//printf("fsdgs %d, %s\n\n", tmpportnum, msg);
 				pthread_mutex_unlock(&mutex);
 				forward_message(tmpportnum, msg);
 			} else if (destport == my_portnum) {
 				sprintf(msg, "%d", my_portnum);
-				//printf("fsdgs %d, %s\n\n", tmpportnum, msg);
 				pthread_mutex_unlock(&mutex);
 				forward_message(tmpportnum, msg);
 			} else {
-				//printf("sdgsswsysrysfas\n\n");
 				pthread_mutex_unlock(&mutex);
 			}	
 			
@@ -874,13 +766,8 @@ void server_listen(int is_join) {
 			key = strtok(NULL, ":");
 			calculatehash(key, strlen(key), keyhash);
 			value = strtok(NULL, ":");
-			printf("%s:%s:", key, value);
-			printhash(keyhash);
-			printf("\n");
 
 			destport =  find_successor(keyhash, 1, well_known_port);
-			printf("Found desination: %d\n", destport);
-			//goto close;
 			if (destport == -2) {
 				ret = send(client, "Node not found", 15, 0);
 				goto close;
@@ -891,12 +778,15 @@ void server_listen(int is_join) {
 				insert(key, value);
 			} else {
 				/* Forward the message */
+				printf("PUT for %s [", key);
+				printhash(keyhash);
+				printf("] was forwarded to localhost:%d\n", destport);
 				sprintf(msg, "PUT_CONFIDENCE:%s:%s", key, value);
 				forward_message(destport, msg); 
 			}
 
 		} else if (strcmp(command, "START") == 0) {
-			printf("%d: Start command received\n", my_portnum);
+			//printf("%d: Start command received\n", my_portnum);
 			if (is_initiator == 1) {
 				is_initiator = 0;
 				goto create_pthread;
@@ -920,33 +810,30 @@ create_pthread:
 	
 		} else if (strcmp(command, "GET_CONFIDENCE") == 0) {
 			key = strtok(NULL, ":");
-			printf("Search for: %s\n", key);
+			//printf("Search for: %s\n", key);
 			for(i = 0; i < MAX_TUPLES; i++) {
-				//if (strlen(key_vals[i].key) == 0)
-				//	goto close;
-
 				if (strcmp(key, key_vals[i].key) == 0) {
-					printf("found %s:%s\n", key, key_vals[i].value); fflush(stdout);
+					printf("Found key value pair (%s:%s)\n", key, key_vals[i].value);
 					ret = send(client, key_vals[i].value, strlen(key_vals[i].value) + 1, 0);
-					printf("Get confidence send bytes: %d\n", ret);
+					//printf("Get confidence send bytes: %d\n", ret);
 					goto close;
 				}
 			}
 		} else if (strcmp(command, "PUT_CONFIDENCE") == 0) {
 			key = strtok(NULL, ":");
 			value = strtok(NULL, ":");
-			printf("%d: Putting - %s:%s\n", my_portnum, key, value);
+			//printf("%d: Putting - %s:%s\n", my_portnum, key, value);
 			insert(key, value);
 		} else if (strcmp(command, "GET_PREDECESSOR") == 0) {
 			sprintf(msg, "%d", my_predecessor.portnum);
 			ret = send(client, msg, strlen(msg)+1, 0);	
-			if (ret < 0)
-				printf("Error sending predecessor info\n");
+			//if (ret < 0)
+			//	printf("Error sending predecessor info\n");
 		} else if (strcmp(command, "GET_SUCCESSOR") == 0) {
 			sprintf(msg, "%d", my_successor.portnum);
 			ret = send(client, msg, strlen(msg)+1, 0);	
-			if (ret < 0)
-				printf("Error sending successor info\n");
+			//if (ret < 0)
+			//	printf("Error sending successor info\n");
 		} else if (strcmp(command, "NOTIFY") == 0) {
 			key = strtok(NULL, ":");
 			sprintf(clbuf, "localhost%s", key);
@@ -955,9 +842,9 @@ create_pthread:
 			if (my_predecessor.portnum == 0) {
 				my_predecessor.portnum = atoi(key);
 				copyhash(my_predecessor.h, keyhash);
-				printf("%d: New predecessor set to %d:", my_portnum, my_predecessor.portnum);
-				printhash(my_predecessor.h);
-				printf("\n");
+				//printf("%d: New predecessor set to %d:", my_portnum, my_predecessor.portnum);
+				//printhash(my_predecessor.h);
+				//printf("\n");
 			} else if (memcmp(my_predecessor.h, keyhash, 16) != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
 				my_predecessor.portnum = atoi(key);
 				copyhash(my_predecessor.h, keyhash);
@@ -965,14 +852,14 @@ create_pthread:
 					calculatehash(key_vals[i].key, strlen(key_vals[i].key), keyhash);
 					if (strlen(key_vals[i].key) > 0 && !is_in_between(my_predecessor.h, myhash, keyhash)) {
 						sprintf(msg, "PUT_CONFIDENCE:%s:%s", key_vals[i].key, key_vals[i].value);
-						printf("%d: Sent %s:%s to %d\n", my_portnum, key_vals[i].key, key_vals[i].value, my_predecessor.portnum);
+						//printf("%d: Sent %s:%s to %d\n", my_portnum, key_vals[i].key, key_vals[i].value, my_predecessor.portnum);
 						forward_message(my_predecessor.portnum, msg);
 						strcpy(key_vals[i].key, "");
 					}
 				}
-				printf("%d: New predecessor set to %d:", my_portnum, my_predecessor.portnum);
-				printhash(my_predecessor.h);
-				printf("\n");
+				//printf("%d: New predecessor set to %d:", my_portnum, my_predecessor.portnum);
+				//printhash(my_predecessor.h);
+				//printf("\n");
 			}
 			pthread_mutex_unlock(&mutex);
 		} else if (strcmp(command, "PRINT") == 0) {
@@ -987,6 +874,16 @@ create_pthread:
 			printf("PRINT: %d %d %d\n", my_portnum, my_successor.portnum, my_successor_of_successor.portnum);
 			sprintf(msg, "PRINT:%d", 0);
 			forward_message(my_successor.portnum, msg);
+		} else if (strcmp(command, "QUERY") == 0) {
+			printf("KEY\t\tVALUE\n");
+			printf("------------------------------\n");
+			for(i = 0; i < MAX_TUPLES; i++) {
+				if (strlen(key_vals[i].key) != 0) {
+					printf("%s\t\t%s\n", key_vals[i].key, key_vals[i].value);
+				}
+			}
+			printf("------------------------------\n");
+			
 		}
 close:
 		close(client);
@@ -1063,7 +960,7 @@ void read_nodelist_and_find_successor()
 		calculatehash(msg, strlen(msg), hash);
 		sprinthash(hash, hashop);
 		sprintf(msg, "GET_FORWARD:%d:%s", well_known_port, hashop);
-		printf("msg: %s\n",msg);
+		//printf("msg: %s\n",msg);
 		forward_message(portnum, msg);
 		successor = listen_on_well_known_port();
 		if (successor == -2) {
@@ -1077,7 +974,7 @@ void read_nodelist_and_find_successor()
 		sprintf(msg, "GET_SUCCESSOR");
 		ret = sync_forward_message(my_successor.portnum, msg, buf);
 		if (ret == -1) {
-			printf("ERror detected in forwarding msg 4\n");
+			//printf("ERror detected in forwarding msg 4\n");
 			my_successor_of_successor.portnum = 0;
 		} else {
 			my_successor_of_successor.portnum = atoi(buf);
@@ -1085,9 +982,9 @@ void read_nodelist_and_find_successor()
 			calculatehash(msg, strlen(msg), my_successor_of_successor.h);
 		}
 
-		printf("Successor is: %d ", my_successor.portnum);
-		printhash(my_successor.h);
-		printf("\n");
+		//printf("Successor is: %d ", my_successor.portnum);
+		//printhash(my_successor.h);
+		//printf("\n");
 	}
 }
 
@@ -1100,12 +997,10 @@ int main(int argc, char *argv[]) {
 
 	if (argc == 2)
 		TOTAL_NODES = atoi(argv[1]);
-	//curr_host = atoi(argv[2]);
 	
 	my_predecessor.portnum = 0;
 	my_successor.portnum = 0;
 
-	//initialize_host();
 	if (argc == 2)
 		server_listen(0);
 	else if (argc == 1)
