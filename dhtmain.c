@@ -1,5 +1,12 @@
-/*
- *	  CSC 501 - HW5 sample code
+/* Single Author info:
+ *      (All of us contributed equal share)
+ *      jhshah  Jitesh H  Shah
+ *      sskanitk Salil S Kanitkar
+ *      msinha  Mukul Sinha
+ * Group info:
+ *      jhshah     Jitesh H Shah
+ *      sskanitk  Salil S Kanitkar
+ *      msinha  Mukul Sinha
  */
 
 #include <arpa/inet.h>
@@ -32,11 +39,16 @@ int my_portnum, is_initiator = 0;
 int forward_message(int port, char *m);
 void read_nodelist_and_find_successor();
 
+/* Stores portnum:hash */
 struct node_entry {
 	int portnum;
 	unsigned char h[16];
 };
+
+/* Nodelist file is stored in this structure */
 struct node_entry node_list[MAX_NODES];
+
+/* Store 2 successors and 1 predecessor */
 struct node_entry my_successor, my_successor_of_successor;
 struct node_entry my_predecessor; 
 
@@ -44,6 +56,7 @@ unsigned char myhash[16];
 
 struct node_entry finger_table[128];
 
+/* This 10000 changes dynamically */
 int well_known_port = 10000;
 int well_known_socket;
 
@@ -55,6 +68,7 @@ struct key_val {
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* Return value of the ASCII character */
 unsigned char num(char a)
 {
 	if (a >= '0' && a <= '9')
@@ -63,18 +77,21 @@ unsigned char num(char a)
 		return a - 'a' + 10;
 }
 
+/* Print the hash */
 void printhash(unsigned char h[16])
 {	 int i;
 	 for(i=0;i<16;i++)
 		 printf("%02x",h[i]);
 }
 
+/* Print the hash in a string */
 void sprinthash(unsigned char h[16], char op[33])
 {	 int i;
 	 for(i=0;i<16;i++)
 	 	sprintf(&op[2*i], "%02x", h[i]);
 	 op[32] = '\0';
 }
+
 void copyhash(unsigned char d[16], unsigned char s[16])
 {
 	int i;
@@ -125,6 +142,7 @@ void add(unsigned char h[16], int i, unsigned char r[16])
         }
 }
 
+/* Generate a random port number for listening to back-replies */
 void generate_well_known_port()
 {
 	struct sockaddr_in sock_server, sock_client;
@@ -156,6 +174,7 @@ void generate_well_known_port()
 	}
 }
 
+/* Read and initialise the nodelist structure */
 void init_node(int portnum, int fd)
 {
 	int count=0, filelen, port, i;
@@ -201,6 +220,7 @@ int compare_nodes(const void *n1, const void *n2)
 	return memcmp(n1_s->h, n2_s->h, 16);
 }
 
+/* Find next in the ring */
 int find_next(int portnum)
 {
 	int i;
@@ -212,6 +232,7 @@ int find_next(int portnum)
 	return node_list[(i + 1) % TOTAL_NODES].portnum;
 }
 
+/* Find prev in the ring */
 int find_prev(int portnum)
 {
 	int i;
@@ -223,6 +244,7 @@ int find_prev(int portnum)
 	return node_list[(i + TOTAL_NODES - 1) % TOTAL_NODES].portnum;
 }
 
+/* Is "Result" in the between the (prev, next] */
 int is_in_between(unsigned char prev[16], unsigned char next[16], unsigned char result[16])
 {
 	int ret1, ret2;
@@ -241,6 +263,7 @@ int is_in_between(unsigned char prev[16], unsigned char next[16], unsigned char 
 	return 0;
 }
 
+/* Initialise the finger table */
 void create_finger_table(int my_portnum) 
 {
 	int i, j;
@@ -265,6 +288,8 @@ void create_finger_table(int my_portnum)
 	}
 }
 
+
+/* Initialise a node. It calls create_fingertable() and inits the nodelist */
 void initialize_host(int portnum) 
 {
 	int fd, filelen, count = 0;
@@ -318,6 +343,7 @@ void initialize_host(int portnum)
 	close(fd);
 }
 
+/* Reada reply from the well-known port */
 int listen_on_well_known_port()
 {
 	struct sockaddr_in sock_server, sock_client;
@@ -343,6 +369,8 @@ int listen_on_well_known_port()
 	return(destport);
 }
 
+/* The actul search function. Given a hash, this function returns the successor.
+ * All message forwards are done in this */
 int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 {
 	int i, ret;
@@ -350,6 +378,7 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 	int resport, retflag=0;
 	unsigned char *hash;
 
+	/* Check successor and predecessors first */
 	pthread_mutex_lock(&mutex);
 	if (my_predecessor.portnum != 0 && is_in_between(my_predecessor.h, myhash, keyhash)) {
 		resport = my_portnum;	
@@ -363,6 +392,8 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 		return resport;
 
 	for (i=0 ; i<128 ; i++) {
+		
+		/* Finger table is not initialised yet */
 		if (finger_table[i].portnum == 0) {
 			sprinthash(keyhash, hashop);
 			sprintf(msg, "GET_FORWARD:%d:%s", wk_portnum, hashop);
@@ -399,6 +430,7 @@ int find_successor(unsigned char keyhash[16], int flag, int wk_portnum)
 	return -2;
 }
 
+/* Insert a key:value pair */
 void insert(char key[BUFLEN], char value[BUFLEN])
 {
 	int i;
@@ -429,6 +461,7 @@ void insert(char key[BUFLEN], char value[BUFLEN])
 	}
 }
 
+/* Forward the message and wait for a reply. Put the reply in "buf" */
 int sync_forward_message(int port, char *m, char *buf)
 {
 	struct sockaddr_in sock_client;
@@ -522,6 +555,8 @@ close:
 		close(sc);
 		return 0;
 }
+
+/* Test whether a given port is open */
 int test_connect(int port)
 {
 	struct sockaddr_in sock_client;
@@ -549,6 +584,7 @@ int test_connect(int port)
 	return 0;
 }
 
+/* Actual stabilise. This is run in a pthread */
 void * stabilise(void *arg)
 {
 	char msg[10], buf[20];
@@ -557,8 +593,10 @@ void * stabilise(void *arg)
 	int i, successor, ret;
 
 	while(1) {
+		/* Get successors predecessor */
 		ret = sync_forward_message(my_successor.portnum, "GET_PREDECESSOR", msg);
 		if (ret == -1) {
+			/* IF successor failed, try the next successor */
 			my_successor.portnum = my_successor_of_successor.portnum;
 			copyhash(my_successor.h, my_successor_of_successor.h);
 			ret = sync_forward_message(my_successor.portnum, "GET_PREDECESSOR", msg);
@@ -570,6 +608,7 @@ void * stabilise(void *arg)
 		sprintf(buf, "localhost%s", msg);
 		calculatehash(buf, strlen(buf), hash);
 
+		/* Make sure that the second successor value is updated */
 		ret = sync_forward_message(my_successor.portnum, "GET_SUCCESSOR", succ_msg);
 		if (ret == -1) {
 			//printf("ERror detected in forwarding msg 2\n");
@@ -589,6 +628,11 @@ void * stabilise(void *arg)
 		}
 		sprintf(buf, "NOTIFY:%d", my_portnum);
 		forward_message(my_successor.portnum, buf);
+
+		/* This makes the function periodic. The placement of sleep 
+		 * make it highly probably to get a fixed ring when updating 
+		 * the finger tables.
+		 */
 		sleep(5);
 
 		/* fix fingers */
@@ -602,6 +646,7 @@ void * stabilise(void *arg)
 			}
 		}
 
+		/* Check whether predecessor is alive */
 		if (my_predecessor.portnum != 0 &&  test_connect(my_predecessor.portnum) == -1) {
 			my_predecessor.portnum = 0;
 		}
@@ -609,6 +654,7 @@ void * stabilise(void *arg)
 	}
 }
 
+/* Main loop */
 void server_listen(int is_join) {
 	struct sockaddr_in sock_server, sock_client;
 	int s, slen = sizeof(sock_client);
@@ -748,6 +794,7 @@ void server_listen(int is_join) {
 			}
 		}
 		else if (strcmp(command, "GET_FORWARD") == 0) {
+			/* A forwarded GET message */
 			tmpport = strtok(NULL, ":");
 			tmpportnum = atoi(tmpport);
 
@@ -826,6 +873,7 @@ create_pthread:
 			pthread_mutex_unlock(&mutex);
 	
 		} else if (strcmp(command, "GET_CONFIDENCE") == 0) {
+			/* A GET with a confidence that the key won't be forwarded */
 			key = strtok(NULL, ":");
 			//printf("Search for: %s\n", key);
 			for(i = 0; i < MAX_TUPLES; i++) {
@@ -836,7 +884,8 @@ create_pthread:
 					goto close;
 				}
 			}
-		} else if (strcmp(command, "PUT_CONFIDENCE") == 0) {
+		} else if (strcmp(command, "PUT_CONFIDENCE") == 0) {\
+			/* A PUT with a confidence that the PUT will not be forwarded */
 			key = strtok(NULL, ":");
 			value = strtok(NULL, ":");
 			//printf("%d: Putting - %s:%s\n", my_portnum, key, value);
@@ -852,6 +901,7 @@ create_pthread:
 			//if (ret < 0)
 			//	printf("Error sending successor info\n");
 		} else if (strcmp(command, "NOTIFY") == 0) {
+			/* NOTIFY from CHORD paper */
 			key = strtok(NULL, ":");
 			sprintf(clbuf, "localhost%s", key);
 			calculatehash(clbuf, strlen(clbuf), keyhash);
@@ -911,6 +961,7 @@ close:
 	close(s);
 }
 
+/* Created by joining node to init */
 void read_nodelist_and_find_successor() 
 {
 	int fd, filelen, successor;

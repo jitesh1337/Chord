@@ -21,6 +21,9 @@ would be nice if you could give us a stabilisation time 12-seconds after
 a join/leave. (i.e. do no other activity or queries for 12 seconds after
 a join/leave).
 
+NOTE
+Our "cur_host" variable is actually "is_initiator". We didn't have much
+time to change it later. Sorry about that. 
 
 General Architecture features
 ----------------------------
@@ -29,7 +32,9 @@ General Architecture features
 their hashes.
 3) A thread is started which periodically stabilises the ring and the finger
 tables.
-4) The join operation searches the nodelist file for a possible node to join 
+4) Each node listens on two different ports. One for the commands and other
+for back-replies.
+5) The join operation searches the nodelist file for a possible node to join 
 with. Once that node is found, it follows the standard join protocol. The 
 periodic stabilisations adjust the predecessors/successors to include the new
 noe in the ring. Periodically, the finger tables are also refreshed. We have
