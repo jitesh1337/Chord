@@ -1,2 +1,37 @@
 CHORD
-test?
+------
+
+DISCLAIMER
+----------
+Since, there were many implementation ideas going back and forth, we thought
+it would be helpful to explain our architecture first.
+
+This implementation aims to stay as close to the paper as possible.
+
+The nodes that are started first use the nodelist file to construct their finger
+tables and create a ring. Each node starts a thread which implements the 
+stabilisation feature. The functions are analogous to the one in the paper.
+
+This thread runs every 6-or-so seconds. So, there is a stabilisation time 
+requirement after a join/leave. typically, after a join or leave, some 
+queries might fail for 2 * (stabilisation time) = 12 seconds. Note, that 
+we have tried to catch as many races as possible, but eventually due to
+the lack of time, there are some dangling races on the finger table. It 
+would be nice if you could give us a stabilisation time 12-seconds after
+a join/leave. (i.e. do no other activity or queries for 12 seconds after
+a join/leave).
+
+
+General Architecture features
+----------------------------
+1) At the start, all nodes read the nodelist file to construct the finger tables.
+2) GET/PUT are forwarded or processed locally according to the give keys and
+their hashes.
+3) A thread is started which periodically stabilises the ring and the finger
+tables.
+4) The join operation searches the nodelist file for a possible node to join 
+with. Once that node is found, it follows the standard join protocol. The 
+periodic stabilisations adjust the predecessors/successors to include the new
+noe in the ring. Periodically, the finger tables are also refreshed. We have
+eliminted all races for the ring, but there *might* be rare conditions for
+updating finger tables.
